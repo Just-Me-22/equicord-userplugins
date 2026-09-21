@@ -1,0 +1,69 @@
+.vc-channel-peek-icon {
+    --cp-circle: 20px;
+    --cp-emoji: 14px;
+
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 auto;
+    width: var(--cp-circle);
+    height: var(--cp-circle);
+    border-radius: 50%;
+    font-size: var(--cp-emoji);
+    line-height: 1;
+    cursor: pointer;
+}
+
+.vc-channel-peek-icon:hover {
+    outline: 1px solid var(--interactive-normal);
+    outline-offset: -1px;
+}
+
+.vc-channel-peek-icon-tiny {
+    --cp-circle: 20px;
+    --cp-emoji: 14px;
+
+    /* the original pads the tiny circle and pulls the margin back, so the hit area
+       grows without the row getting taller */
+    padding: 4px;
+    margin: -4px 0;
+}
+
+.vc-channel-peek-icon-small {
+    --cp-circle: 32px;
+    --cp-emoji: 16px;
+}
+
+.vc-channel-peek-icon-medium {
+    --cp-circle: 42px;
+    --cp-emoji: 20px;
+}
+
+.vc-channel-peek-icon-custom {
+    width: var(--cp-emoji);
+    height: var(--cp-emoji);
+    object-fit: contain;
+}
+
+/* discord renders the subtitle at text-xs, which reads small next to a 42px circle */
+.vc-channel-peek-preview {
+    font-size: 12px;
+}
+
+.vc-channel-peek-preview-small {
+    font-size: 13px;
+}
+
+.vc-channel-peek-preview-medium {
+    font-size: 14px;
+}
+
+.vc-channel-peek-picker-notice {
+    margin-bottom: 8px;
+    padding: 8px 12px;
+    border-radius: 6px;
+    background: var(--background-modifier-accent);
+    color: var(--text-default);
+    font-size: 13px;
+    line-height: 1.4;
+}

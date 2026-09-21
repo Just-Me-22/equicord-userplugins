@@ -1,0 +1,11 @@
+# these eight have their own repos, cloned in by setup.sh
+alwaysShowDMNameplates/
+betterImageEditor/
+collectibleShelf/
+probeDeck/
+profileSets/
+serverSafety/
+sidebarResizeLimits/
+userPanelServerProfile/
+
+node_modules/
