@@ -12,7 +12,7 @@ ignored by this one, so nothing lives in two places at once.
 git clone https://github.com/Equicord/Equicord.git
 cd Equicord/src
 git clone <this repo> userplugins
-./userplugins/setup.sh
+./userplugins/_setup.sh
 ```
 
 Then build Equicord from its root with `pnpm build`.
