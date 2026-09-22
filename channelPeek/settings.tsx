@@ -184,6 +184,11 @@ export const settings = definePluginSettings({
         description: "Hovering a channel offers a reply box that opens beside the sidebar.",
         default: false
     },
+    quickReact: {
+        type: OptionType.BOOLEAN,
+        description: "Hovering a channel offers a reaction to its last message.",
+        default: false
+    },
 
     catchUpButton: {
         type: OptionType.BOOLEAN,

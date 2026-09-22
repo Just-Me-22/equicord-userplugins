@@ -9,24 +9,27 @@ import { Settings } from "@api/Settings";
 import ErrorBoundary from "@components/ErrorBoundary";
 import roleColorEverywhere from "@plugins/roleColorEverywhere";
 import { classNameFactory } from "@utils/css";
+import { Logger } from "@utils/Logger";
 import { classes } from "@utils/misc";
 import { Channel, Message } from "@vencord/discord-types";
 import { ChannelType } from "@vencord/discord-types/enums";
 import {
-    GuildMemberStore, IconUtils, NavigationRouter, ReadStateStore, ReadStateUtils,
-    RelationshipStore, TypingStore, useEffect,
-UserGuildSettingsStore, UserStore, useState, useStateFromStores, VoiceStateStore
+    Constants, GuildMemberStore, IconUtils, NavigationRouter, PermissionsBits, PermissionStore, Popout,
+    ReadStateStore, ReadStateUtils, RelationshipStore, RestAPI, showToast, Toasts, TypingStore, useEffect,
+    useRef, UserGuildSettingsStore, UserStore, useState, useStateFromStores, VoiceStateStore
 } from "@webpack/common";
 
 import { activityOf } from "./activity";
 import { describe, plainText } from "./describe";
 import { ageOf, isStale, matchesKeyword } from "./format";
 import { lastMessageOf, subscribeChannel } from "./gateway";
+import { EmojiSelectPayload, emojiValue, ReactionEmojiPicker } from "./picker";
 import { openQuickReply } from "./QuickReply";
 import { settings } from "./settings";
 import { useMinute } from "./ticker";
 
 const cl = classNameFactory("vc-channel-peek-");
+const logger = new Logger("ChannelPeek");
 
 function useLastMessage(channel: Channel) {
     const channelId = channel.id;
@@ -104,19 +107,70 @@ function Heatmap({ channelId }: { channelId: string; }) {
     const bars = activityOf(channelId);
     if (!bars) return null;
 
-    return <span className={cl("heat")} aria-hidden="true">
-        {bars.map((level, hour) => <i key={hour} style={{ opacity: 0.15 + level * 0.85 }} />)}
-    </span>;
+    const stops = bars.map((level, hour) =>
+        `color-mix(in srgb, currentcolor ${Math.round(15 + level * 85)}%, transparent) ${hour * 2}px ${hour * 2 + 2}px`);
+
+    return <span className={cl("heat")} style={{ backgroundImage: `linear-gradient(to right, ${stops.join()})` }} aria-hidden="true" />;
 }
 
-function Actions({ channel, unread }: { channel: Channel; unread: boolean; }) {
-    const { markReadButton, quickReply } = settings.use(["markReadButton", "quickReply"]);
-    if (!markReadButton && !quickReply) return null;
+function stop(e: React.MouseEvent) {
+    e.preventDefault();
+    e.stopPropagation();
+}
 
-    const stop = (e: React.MouseEvent) => {
-        e.preventDefault();
-        e.stopPropagation();
-    };
+function canReact(channel: Channel) {
+    return PermissionStore.can(PermissionsBits.ADD_REACTIONS, channel)
+        && PermissionStore.can(PermissionsBits.READ_MESSAGE_HISTORY, channel);
+}
+
+function react(channel: Channel, message: Message, emoji: EmojiSelectPayload | null) {
+    const value = emojiValue(emoji);
+    if (!value) return;
+
+    RestAPI.put({ url: Constants.Endpoints.REACTION(channel.id, message.id, value, "@me") }).catch(err => {
+        logger.error("could not react", err);
+        showToast("Could not add that reaction", Toasts.Type.FAILURE);
+    });
+}
+
+function ReactButton({ channel, message }: { channel: Channel; message: Message; }) {
+    const trigger = useRef<HTMLButtonElement>(null);
+
+    return <Popout
+        position="bottom"
+        align="left"
+        targetElementRef={trigger}
+        renderPopout={({ closePopout }: { closePopout: () => void; }) => (
+            <ReactionEmojiPicker
+                channel={channel}
+                closePopout={closePopout}
+                onSelectEmoji={({ emoji, willClose }: { emoji: EmojiSelectPayload | null; willClose: boolean; }) => {
+                    react(channel, message, emoji);
+                    if (willClose) closePopout();
+                }}
+            />
+        )}
+    >
+        {(popoutProps: any) => <button
+            {...popoutProps}
+            ref={trigger}
+            className={cl("action")}
+            aria-label="React to the last message"
+            onClick={e => {
+                stop(e);
+                popoutProps.onClick?.(e);
+            }}
+        >
+            <svg width={12} height={12} viewBox="0 0 24 24">
+                <path fill="currentColor" d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20Zm0 18a8 8 0 1 1 0-16 8 8 0 0 1 0 16ZM9 9.5a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0Zm9 0a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0ZM12 18a5.5 5.5 0 0 0 5-3.2 1 1 0 0 0-1.8-.9A3.5 3.5 0 0 1 12 16a3.5 3.5 0 0 1-3.2-2.1 1 1 0 1 0-1.8.9A5.5 5.5 0 0 0 12 18Z" />
+            </svg>
+        </button>}
+    </Popout>;
+}
+
+function Actions({ channel, message, unread }: { channel: Channel; message: Message; unread: boolean; }) {
+    const { markReadButton, quickReply, quickReact } = settings.use(["markReadButton", "quickReply", "quickReact"]);
+    if (!markReadButton && !quickReply && !quickReact) return null;
 
     return <span className={cl("actions")}>
         {quickReply && <button
@@ -131,6 +185,7 @@ function Actions({ channel, unread }: { channel: Channel; unread: boolean; }) {
                 <path fill="currentColor" d="M10 9V5l-7 7 7 7v-4.1c5 0 8.5 1.6 11 5.1-1-5-4-10-11-11Z" />
             </svg>
         </button>}
+        {quickReact && canReact(channel) && <ReactButton channel={channel} message={message} />}
         {markReadButton && unread && <button
             className={cl("action")}
             aria-label="Mark as read"
@@ -231,7 +286,7 @@ const Preview = ErrorBoundary.wrap(function Preview({ channel }: { channel: Chan
         {settings.store.heatmap && <Heatmap channelId={channel.id} />}
         {settings.store.unreadCount && read.count > 0 && <span className={cl("count")}>{read.count}</span>}
         {settings.store.showAge && timestamp > 0 && <span className={cl("age")}>{ageOf(timestamp)}</span>}
-        <Actions channel={channel} unread={read.unread} />
+        <Actions channel={channel} message={message} unread={read.unread} />
     </span>;
 }, { noop: true });
 

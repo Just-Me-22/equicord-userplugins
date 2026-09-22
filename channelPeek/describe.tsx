@@ -70,6 +70,8 @@ function bodyOf(message: Message, channel: Channel): React.ReactNode {
         return Parser.parseInlineReply(message.content);
     }
 
+    if (message.poll) return message.poll.question.text ? `Poll: ${message.poll.question.text}` : "sent a poll";
+
     const attachment = message.attachments?.[0];
     if (attachment) return attachmentNode(attachment, channel);
 
@@ -104,6 +106,7 @@ export function describe(message: Message, channel: Channel): React.ReactNode {
 
 export function plainText(message: Message) {
     if (message.content) return message.content;
+    if (message.poll) return message.poll.question.text ?? "";
 
     const attachment = message.attachments?.[0];
     if (attachment) return attachment.filename;
