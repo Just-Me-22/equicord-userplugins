@@ -91,8 +91,6 @@ export default definePlugin({
             }
         },
         {
-            // the DM list row, whose ternary is ANIMATED:PLAIN and whose loop is the
-            // hover flag. boldFontOpacity:.9 is unique to it in the bundle
             find: "boldFontOpacity:.9",
             predicate: () => settings.store.nameStyles,
             replacement: [

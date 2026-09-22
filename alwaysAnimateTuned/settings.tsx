@@ -72,6 +72,16 @@ export const settings = definePluginSettings({
         description: "Stop animating while a list is scrolling. This is when animation costs most and shows least.",
         default: true
     },
+    scrollSpeed: {
+        type: OptionType.NUMBER,
+        description: "Only count a scroll faster than this many pixels per second. 0 counts any scroll.",
+        default: 0
+    },
+    pauseWhileTyping: {
+        type: OptionType.BOOLEAN,
+        description: "Stop animating while you are typing in a text box.",
+        default: true
+    },
     pauseOffscreen: {
         type: OptionType.BOOLEAN,
         description: "Only animate what is actually on screen.",
@@ -91,6 +101,16 @@ export const settings = definePluginSettings({
         type: OptionType.NUMBER,
         description: "Most video surfaces playing at once, nearest the cursor winning. 0 means no limit.",
         default: 12
+    },
+    hoverOnly: {
+        type: OptionType.BOOLEAN,
+        description: "Only play the video surface under the cursor. Animated images are not affected.",
+        default: false
+    },
+    refreshStatic: {
+        type: OptionType.BOOLEAN,
+        description: "When the window is hidden, idle, or asked for reduced motion, redraw animated images as their still version. Costs one re-render each way, the same as switching windows.",
+        default: true
     },
     sweepReport: {
         type: OptionType.COMPONENT,
