@@ -25,7 +25,21 @@ export function isStale(timestamp: number) {
 }
 
 let keywordSource = "";
-let keywordList: string[] = [];
+let patterns: RegExp[] = [];
+
+function compile(term: string) {
+    const slashed = term.match(/^\/(.+)\/([gimsuy]*)$/);
+    if (slashed) {
+        try {
+            return new RegExp(slashed[1], slashed[2].replace("g", ""));
+        } catch {
+            return undefined;
+        }
+    }
+
+    const escaped = term.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    return new RegExp(`(?<![\\p{L}\\p{N}])${escaped}(?![\\p{L}\\p{N}])`, "iu");
+}
 
 export function matchesKeyword(text: string) {
     const { keywords } = settings.store;
@@ -33,10 +47,13 @@ export function matchesKeyword(text: string) {
 
     if (keywords !== keywordSource) {
         keywordSource = keywords;
-        keywordList = keywords.split(",").map(word => word.trim().toLowerCase()).filter(Boolean);
+        patterns = keywords
+            .split(",")
+            .map(term => term.trim())
+            .filter(Boolean)
+            .map(compile)
+            .filter((pattern): pattern is RegExp => Boolean(pattern));
     }
-    if (!keywordList.length) return false;
 
-    const haystack = text.toLowerCase();
-    return keywordList.some(word => haystack.includes(word));
+    return patterns.some(pattern => pattern.test(text));
 }

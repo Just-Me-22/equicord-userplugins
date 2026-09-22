@@ -26,7 +26,7 @@ function close() {
 function Composer({ channel, anchor }: { channel: Channel; anchor: DOMRect; }) {
     const [value, setValue] = useState("");
     const [sending, setSending] = useState(false);
-    const input = useRef<HTMLInputElement>(null);
+    const input = useRef<HTMLTextAreaElement>(null);
     const trigger = useRef<HTMLButtonElement>(null);
     const caret = useRef(0);
 
@@ -82,14 +82,23 @@ function Composer({ channel, anchor }: { channel: Channel; anchor: DOMRect; }) {
         caret.current = input.current?.selectionStart ?? caret.current;
     };
 
+    useEffect(() => {
+        const box = input.current;
+        if (!box) return;
+
+        box.style.height = "auto";
+        box.style.height = `${box.scrollHeight}px`;
+    }, [value]);
+
     const top = Math.max(8, Math.min(anchor.top, window.innerHeight - 90));
 
     return <div className={cl("reply")} style={{ left: anchor.right + 8, top }}>
         <div className={cl("reply-target")}>#{channel.name}</div>
         <div className={cl("reply-row")}>
-            <input
+            <textarea
                 ref={input}
                 className={cl("reply-input")}
+                rows={1}
                 value={value}
                 disabled={sending}
                 placeholder="Message"

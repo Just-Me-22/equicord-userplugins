@@ -15,7 +15,9 @@ import {
     ActiveJoinedThreadsStore, FluxDispatcher, Menu, MessageStore, UserGuildSettingsStore
 } from "@webpack/common";
 
+import { loadActivity, stopActivity } from "./activity";
 import { openBulkEmoji } from "./BulkEmoji";
+import { openCatchUp } from "./CatchUp";
 import { refreshCategories, startCategories, stopCategories } from "./category";
 import { ChannelIcon, openEmojiPicker } from "./ChannelIcon";
 import { getOverrides, migrateOverrides, resolveEmoji, setOverride } from "./emoji";
@@ -25,6 +27,8 @@ import { startGateway, stopGateway } from "./gateway";
 import Preview from "./Preview";
 import { destroyQuickReply } from "./QuickReply";
 import { hooks, settings } from "./settings";
+import { refreshAutoCollapse, stopAutoCollapse } from "./sidebar";
+import { stopTicker } from "./ticker";
 
 const logger = new Logger("ChannelPeek");
 
@@ -114,6 +118,13 @@ const guildContext: NavContextMenuPatchCallback = (children, { guild }: { guild:
                 label="Channel Emoji…"
                 action={openBulkEmoji}
             />
+            {settings.store.catchUpButton && (
+                <Menu.MenuItem
+                    id="vc-channel-peek-catchup"
+                    label="Catch Up…"
+                    action={openCatchUp}
+                />
+            )}
         </Menu.MenuGroup>
     );
 };
@@ -142,6 +153,7 @@ function onChannelSelect() {
     attachFilterBar();
     refreshFilter();
     refreshCategories();
+    refreshAutoCollapse();
 }
 
 function syncFilter() {
@@ -189,6 +201,8 @@ export default definePlugin({
         startGateway();
         hooks.filterChanged = syncFilter;
         hooks.categoriesChanged = refreshCategories;
+        hooks.autoCollapseChanged = refreshAutoCollapse;
+        loadActivity();
         FluxDispatcher.subscribe("CHANNEL_SELECT", onChannelSelect);
         syncFilter();
         startCategories();
@@ -199,9 +213,13 @@ export default definePlugin({
         hooks.filterChanged = () => { };
         FluxDispatcher.unsubscribe("CHANNEL_SELECT", onChannelSelect);
         hooks.categoriesChanged = () => { };
+        hooks.autoCollapseChanged = () => { };
+        stopAutoCollapse();
+        stopActivity();
         stopFilter();
         stopFilterBar();
         stopCategories();
+        stopTicker();
         destroyQuickReply();
     },
 

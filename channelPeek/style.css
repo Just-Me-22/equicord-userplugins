@@ -256,8 +256,12 @@
 .vc-channel-peek-reply-input {
     flex: 1 1 auto;
     min-width: 0;
-    height: 34px;
-    padding: 0 10px;
+    min-height: 34px;
+    max-height: 132px;
+    padding: 8px 10px;
+    resize: none;
+    font-family: inherit;
+    line-height: 1.3;
     border: none;
     border-radius: var(--lp-inner, 8px);
     background: color-mix(in srgb, var(--lp-3, var(--input-background)) 62%, transparent);
@@ -372,4 +376,108 @@
     color: var(--header-secondary);
     text-transform: uppercase;
     letter-spacing: 0.02em;
+}
+
+.vc-channel-peek-heat {
+    display: inline-flex;
+    flex: 0 0 auto;
+    gap: 1px;
+    align-items: flex-end;
+    height: 8px;
+    margin-left: 4px;
+}
+
+.vc-channel-peek-heat i {
+    width: 1px;
+    height: 100%;
+    background: currentcolor;
+}
+
+.vc-channel-peek-catchup-tools {
+    display: flex;
+    gap: 8px;
+    padding: 8px 0;
+}
+
+.vc-channel-peek-catchup-list {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    max-height: 60vh;
+    overflow-y: auto;
+    padding-bottom: 8px;
+}
+
+.vc-channel-peek-catchup-row {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    border-radius: 6px;
+}
+
+.vc-channel-peek-catchup-row:hover {
+    background: var(--background-mod-subtle);
+}
+
+.vc-channel-peek-catchup-open {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    flex: 1 1 auto;
+    min-width: 0;
+    padding: 6px 8px;
+    border: none;
+    background: transparent;
+    color: inherit;
+    text-align: left;
+    cursor: pointer;
+}
+
+.vc-channel-peek-catchup-where {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+}
+
+.vc-channel-peek-catchup-guild {
+    color: var(--text-muted);
+}
+
+.vc-channel-peek-catchup-channel {
+    color: var(--text-default);
+    font-weight: 600;
+}
+
+.vc-channel-peek-catchup-mention {
+    color: var(--text-warning);
+}
+
+.vc-channel-peek-catchup-text {
+    overflow: hidden;
+    color: var(--text-muted);
+    font-size: 13px;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+
+.vc-channel-peek-catchup-ack {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 auto;
+    width: 28px;
+    height: 28px;
+    margin-right: 6px;
+    padding: 0;
+    border: none;
+    border-radius: 6px;
+    background: transparent;
+    color: var(--interactive-normal);
+    cursor: pointer;
+}
+
+.vc-channel-peek-catchup-ack:hover {
+    background: var(--background-mod-strong);
+    color: var(--interactive-hover);
 }

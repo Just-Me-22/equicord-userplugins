@@ -9,7 +9,9 @@ import { Channel, Message } from "@vencord/discord-types";
 import { findByPropsLazy } from "@webpack";
 import { FluxDispatcher, GuildChannelStore, GuildMemberStore, MessageStore, SelectedGuildStore } from "@webpack/common";
 
+import { recordMessage } from "./activity";
 import { hooks, settings } from "./settings";
+import { refreshAutoCollapse } from "./sidebar";
 
 const SocketModule = findByPropsLazy("getSocket");
 
@@ -61,6 +63,11 @@ function previewAuthorId(guildId: string, channelId: string) {
 }
 
 function onMessageEvent(event: any) {
+    if (event.type === "MESSAGE_CREATE" && event.message?.channel_id) {
+        recordMessage(event.message.channel_id);
+        refreshAutoCollapse();
+    }
+
     if (event.messages) {
         const touched = new Set<string>();
         for (const entry of event.messages) {

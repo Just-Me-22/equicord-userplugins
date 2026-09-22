@@ -18,11 +18,13 @@ import {
 UserGuildSettingsStore, UserStore, useState, useStateFromStores, VoiceStateStore
 } from "@webpack/common";
 
+import { activityOf } from "./activity";
 import { describe, plainText } from "./describe";
 import { ageOf, isStale, matchesKeyword } from "./format";
 import { lastMessageOf, subscribeChannel } from "./gateway";
 import { openQuickReply } from "./QuickReply";
 import { settings } from "./settings";
+import { useMinute } from "./ticker";
 
 const cl = classNameFactory("vc-channel-peek-");
 
@@ -98,9 +100,17 @@ function VoiceLine({ channel }: { channel: Channel; }) {
     return <span className={cl("preview")}>{extra > 0 ? `${shown} +${extra}` : shown}</span>;
 }
 
-function Actions({ channel, message }: { channel: Channel; message: Message | undefined; }) {
-    const { markReadButton, quickReply } = settings.store;
-    const unread = useStateFromStores([ReadStateStore], () => ReadStateStore.hasUnread(channel.id));
+function Heatmap({ channelId }: { channelId: string; }) {
+    const bars = activityOf(channelId);
+    if (!bars) return null;
+
+    return <span className={cl("heat")} aria-hidden="true">
+        {bars.map((level, hour) => <i key={hour} style={{ opacity: 0.15 + level * 0.85 }} />)}
+    </span>;
+}
+
+function Actions({ channel, unread }: { channel: Channel; unread: boolean; }) {
+    const { markReadButton, quickReply } = settings.use(["markReadButton", "quickReply"]);
     if (!markReadButton && !quickReply) return null;
 
     const stop = (e: React.MouseEvent) => {
@@ -141,21 +151,25 @@ const Preview = ErrorBoundary.wrap(function Preview({ channel }: { channel: Chan
         "showAuthor", "showAvatar", "roleColors", "colorScope", "iconSize", "previewLines",
         "fullTextTooltip", "showAge", "staleAfter", "boldMentions", "dimRead", "unreadCount",
         "keywords", "typingIndicator", "voiceOccupants", "jumpToMessage", "mutedChannels",
-        "markReadButton", "quickReply", "attachmentDetail", "thumbnails", "linkStyle",
-        "blurNsfw", "replyContext"
+        "attachmentDetail", "thumbnails", "linkStyle", "blurNsfw", "replyContext", "heatmap"
     ]);
 
     const message = useLastMessage(channel);
-    const unread = useStateFromStores([ReadStateStore], () => ReadStateStore.hasUnread(channel.id));
-    const unreadCount = useStateFromStores([ReadStateStore], () => ReadStateStore.getUnreadCount(channel.id));
-    const typing = useStateFromStores([TypingStore], () => {
-        if (!settings.store.typingIndicator) return [];
-        const me = UserStore.getCurrentUser()?.id;
-        return Object.keys(TypingStore.getTypingUsers(channel.id)).filter(id => id !== me);
-    });
+    const read = useStateFromStores([ReadStateStore], () => ({
+        unread: ReadStateStore.hasUnread(channel.id),
+        count: ReadStateStore.getUnreadCount(channel.id)
+    }), [channel.id], (a, b) => a.unread === b.unread && a.count === b.count);
 
-    if (typing.length) {
-        return <span className={classes(cl("preview"), cl("typing"))}>{typingLabel(typing)}</span>;
+    const typing = useStateFromStores([TypingStore], () => {
+        if (!settings.store.typingIndicator) return "";
+        const me = UserStore.getCurrentUser()?.id;
+        return Object.keys(TypingStore.getTypingUsers(channel.id)).filter(id => id !== me).join();
+    }, [channel.id]);
+
+    useMinute(settings.store.showAge || settings.store.staleAfter > 0);
+
+    if (typing) {
+        return <span className={classes(cl("preview"), cl("typing"))}>{typingLabel(typing.split(","))}</span>;
     }
 
     if (channel.type === ChannelType.GUILD_VOICE || channel.type === ChannelType.GUILD_STAGE_VOICE) {
@@ -171,7 +185,7 @@ const Preview = ErrorBoundary.wrap(function Preview({ channel }: { channel: Chan
     const timestamp = message.timestamp ? new Date(message.timestamp as any).getTime() : 0;
 
     const muted = UserGuildSettingsStore.isChannelMuted(channel.guild_id, channel.id);
-    const dimmed = (settings.store.dimRead && !unread) || (muted && settings.store.mutedChannels === "dim");
+    const dimmed = (settings.store.dimRead && !read.unread) || (muted && settings.store.mutedChannels === "dim");
 
     const raw = plainText(message);
     const color = author && settings.store.roleColors ? previewColor(channel, author.id) : null;
@@ -214,9 +228,10 @@ const Preview = ErrorBoundary.wrap(function Preview({ channel }: { channel: Chan
         onClick={jump}
     >
         {settings.store.showAuthor || !name ? body : text}
-        {settings.store.unreadCount && unreadCount > 0 && <span className={cl("count")}>{unreadCount}</span>}
+        {settings.store.heatmap && <Heatmap channelId={channel.id} />}
+        {settings.store.unreadCount && read.count > 0 && <span className={cl("count")}>{read.count}</span>}
         {settings.store.showAge && timestamp > 0 && <span className={cl("age")}>{ageOf(timestamp)}</span>}
-        <Actions channel={channel} message={message} />
+        <Actions channel={channel} unread={read.unread} />
     </span>;
 }, { noop: true });
 

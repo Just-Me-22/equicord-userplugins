@@ -13,7 +13,11 @@ const cl = classNameFactory("vc-channel-peek-");
 
 export type OverrideMap = Record<string, string>;
 
-export const hooks = { filterChanged: () => { }, categoriesChanged: () => { } };
+export const hooks = {
+    filterChanged: () => { },
+    categoriesChanged: () => { },
+    autoCollapseChanged: () => { }
+};
 
 function heading(text: string) {
     return {
@@ -158,6 +162,12 @@ export const settings = definePluginSettings({
         default: false
     },
 
+    heatmap: {
+        type: OptionType.BOOLEAN,
+        description: "Show a 24 hour activity bar. It fills in as messages arrive, it cannot look backwards.",
+        default: false
+    },
+
     headingActions: heading("What you can do from a row"),
     jumpToMessage: {
         type: OptionType.BOOLEAN,
@@ -173,6 +183,18 @@ export const settings = definePluginSettings({
         type: OptionType.BOOLEAN,
         description: "Hovering a channel offers a reply box that opens beside the sidebar.",
         default: false
+    },
+
+    catchUpButton: {
+        type: OptionType.BOOLEAN,
+        description: "Add a Catch Up item to the server menu, listing everything unread.",
+        default: false
+    },
+    autoCollapse: {
+        type: OptionType.BOOLEAN,
+        description: "Collapse categories with nothing unread, and expand them when something arrives.",
+        default: false,
+        onChange: () => hooks.autoCollapseChanged()
     },
 
     headingFinding: heading("Finding a channel"),
