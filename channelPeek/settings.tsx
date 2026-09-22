@@ -5,13 +5,25 @@
  */
 
 import { definePluginSettings } from "@api/Settings";
+import { classNameFactory } from "@utils/css";
 import { OptionType } from "@utils/types";
+import { Forms } from "@webpack/common";
+
+const cl = classNameFactory("vc-channel-peek-");
 
 export type OverrideMap = Record<string, string>;
 
-export const hooks = { filterChanged: () => { } };
+export const hooks = { filterChanged: () => { }, categoriesChanged: () => { } };
+
+function heading(text: string) {
+    return {
+        type: OptionType.COMPONENT as const,
+        component: () => <Forms.FormTitle tag="h5" className={cl("group")}>{text}</Forms.FormTitle>
+    };
+}
 
 export const settings = definePluginSettings({
+    headingLine: heading("What the line says"),
     showAuthor: {
         type: OptionType.BOOLEAN,
         description: "Prefix each preview with who sent it.",
@@ -35,31 +47,9 @@ export const settings = definePluginSettings({
             { label: "Just the name", value: "name" }
         ]
     },
-    mutedChannels: {
-        type: OptionType.SELECT,
-        description: "What muted channels get.",
-        options: [
-            { label: "No preview", value: "hide", default: true },
-            { label: "A dimmed preview", value: "dim" },
-            { label: "A normal preview", value: "show" }
-        ]
-    },
-    previewLines: {
-        type: OptionType.SELECT,
-        description: "How many lines a preview may use before it truncates.",
-        options: [
-            { label: "One", value: "1", default: true },
-            { label: "Two", value: "2" }
-        ]
-    },
-    fullTextTooltip: {
-        type: OptionType.BOOLEAN,
-        description: "Hovering a truncated preview shows the whole message.",
-        default: false
-    },
     attachmentDetail: {
         type: OptionType.BOOLEAN,
-        description: "Name the kind of attachment instead of \"sent an attachment\", and use embed and sticker titles.",
+        description: "Name the kind of attachment, and use embed and sticker titles.",
         default: false
     },
     thumbnails: {
@@ -82,19 +72,56 @@ export const settings = definePluginSettings({
     },
     replyContext: {
         type: OptionType.BOOLEAN,
-        description: "Mark replies and say who is being replied to.",
+        description: "Mark replies.",
         default: false
     },
-    showAge: {
+    previewLines: {
+        type: OptionType.SELECT,
+        description: "How many lines a preview may use before it truncates.",
+        options: [
+            { label: "One", value: "1", default: true },
+            { label: "Two", value: "2" }
+        ]
+    },
+    fullTextTooltip: {
         type: OptionType.BOOLEAN,
-        description: "Put the message's age at the end of the row.",
+        description: "Hovering a truncated preview shows the whole message.",
         default: false
     },
-    staleAfter: {
-        type: OptionType.NUMBER,
-        description: "Fade previews older than this many hours. 0 leaves them alone.",
-        default: 0
+
+    headingWhere: heading("Which channels get one"),
+    mutedChannels: {
+        type: OptionType.SELECT,
+        description: "What muted channels get.",
+        options: [
+            { label: "No preview", value: "hide", default: true },
+            { label: "A dimmed preview", value: "dim" },
+            { label: "A normal preview", value: "show" }
+        ]
     },
+    threads: {
+        type: OptionType.BOOLEAN,
+        description: "Preview threads as well as channels.",
+        default: false
+    },
+    forums: {
+        type: OptionType.BOOLEAN,
+        description: "Preview forum channels with their newest post.",
+        default: false
+    },
+    voiceOccupants: {
+        type: OptionType.BOOLEAN,
+        description: "Show who is in a voice channel on its second line.",
+        default: false
+    },
+    categorySummary: {
+        type: OptionType.BOOLEAN,
+        description: "A collapsed category shows the newest message from inside it.",
+        default: false,
+        onChange: () => hooks.categoriesChanged()
+    },
+
+    headingUrgency: heading("What is worth your attention"),
     boldMentions: {
         type: OptionType.BOOLEAN,
         description: "Bold the preview when the message mentions you.",
@@ -110,6 +137,16 @@ export const settings = definePluginSettings({
         description: "Show how many messages are unread.",
         default: false
     },
+    showAge: {
+        type: OptionType.BOOLEAN,
+        description: "Put the message's age at the end of the row.",
+        default: false
+    },
+    staleAfter: {
+        type: OptionType.NUMBER,
+        description: "Fade previews older than this many hours. 0 leaves them alone.",
+        default: 0
+    },
     keywords: {
         type: OptionType.STRING,
         description: "Highlight previews containing any of these words, separated by commas.",
@@ -120,24 +157,11 @@ export const settings = definePluginSettings({
         description: "Replace the preview while someone is typing in that channel.",
         default: false
     },
-    voiceOccupants: {
-        type: OptionType.BOOLEAN,
-        description: "Show who is in a voice channel on its second line.",
-        default: false
-    },
-    threads: {
-        type: OptionType.BOOLEAN,
-        description: "Preview threads as well as channels.",
-        default: false
-    },
-    forums: {
-        type: OptionType.BOOLEAN,
-        description: "Preview forum channels with their newest post.",
-        default: false
-    },
+
+    headingActions: heading("What you can do from a row"),
     jumpToMessage: {
         type: OptionType.BOOLEAN,
-        description: "Clicking the preview text opens the channel at that message instead of at the bottom.",
+        description: "Clicking the preview opens the channel at that message instead of at the bottom.",
         default: false
     },
     markReadButton: {
@@ -150,6 +174,8 @@ export const settings = definePluginSettings({
         description: "Hovering a channel offers a reply box that opens beside the sidebar.",
         default: false
     },
+
+    headingFinding: heading("Finding a channel"),
     filterBar: {
         type: OptionType.BOOLEAN,
         description: "Put a search box and a hide-read toggle above the channel list.",
@@ -162,6 +188,8 @@ export const settings = definePluginSettings({
         default: false,
         onChange: () => hooks.filterChanged()
     },
+
+    headingIcons: heading("Channel icons"),
     channelIcons: {
         type: OptionType.BOOLEAN,
         description: "Replace the # with the channel's emoji on a tinted circle.",
@@ -184,9 +212,10 @@ export const settings = definePluginSettings({
     },
     iconFallback: {
         type: OptionType.STRING,
-        description: "Emoji for channels that have none set and nothing guessed. Leave empty to keep the # on those.",
+        description: "Emoji for channels with none set and nothing guessed. Empty keeps the #.",
         default: "\u{1F310}"
     },
+
     iconOverrides: {
         type: OptionType.CUSTOM,
         description: "",

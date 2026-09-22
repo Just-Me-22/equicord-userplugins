@@ -9,7 +9,7 @@ import { Channel, Message } from "@vencord/discord-types";
 import { findByPropsLazy } from "@webpack";
 import { FluxDispatcher, GuildChannelStore, GuildMemberStore, MessageStore, SelectedGuildStore } from "@webpack/common";
 
-import { settings } from "./settings";
+import { hooks, settings } from "./settings";
 
 const SocketModule = findByPropsLazy("getSocket");
 
@@ -71,12 +71,17 @@ function onMessageEvent(event: any) {
         if (touched.size) touched.forEach(wake);
         else wakeAll();
 
+        hooks.categoriesChanged();
+
         requestMissingMembers(SelectedGuildStore.getGuildId());
         return;
     }
 
     const channelId = event.channelId ?? event.message?.channel_id;
-    if (channelId) wake(channelId);
+    if (channelId) {
+        wake(channelId);
+        hooks.categoriesChanged();
+    }
 }
 
 function requestLastMessages(guildId: string | null | undefined) {

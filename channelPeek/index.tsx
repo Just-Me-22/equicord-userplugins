@@ -16,6 +16,7 @@ import {
 } from "@webpack/common";
 
 import { openBulkEmoji } from "./BulkEmoji";
+import { refreshCategories, startCategories, stopCategories } from "./category";
 import { ChannelIcon, openEmojiPicker } from "./ChannelIcon";
 import { getOverrides, migrateOverrides, resolveEmoji, setOverride } from "./emoji";
 import { refresh as refreshFilter, startFilter, stopFilter } from "./filter";
@@ -140,6 +141,7 @@ function subtitleFor(channel: Channel) {
 function onChannelSelect() {
     attachFilterBar();
     refreshFilter();
+    refreshCategories();
 }
 
 function syncFilter() {
@@ -186,16 +188,20 @@ export default definePlugin({
         migrateOverrides();
         startGateway();
         hooks.filterChanged = syncFilter;
+        hooks.categoriesChanged = refreshCategories;
         FluxDispatcher.subscribe("CHANNEL_SELECT", onChannelSelect);
         syncFilter();
+        startCategories();
     },
 
     stop() {
         stopGateway();
         hooks.filterChanged = () => { };
         FluxDispatcher.unsubscribe("CHANNEL_SELECT", onChannelSelect);
+        hooks.categoriesChanged = () => { };
         stopFilter();
         stopFilterBar();
+        stopCategories();
         destroyQuickReply();
     },
 
