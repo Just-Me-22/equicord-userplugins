@@ -4,43 +4,13 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
-import { definePluginSettings } from "@api/Settings";
-import definePlugin, { OptionType } from "@utils/types";
-import { WindowStore } from "@webpack/common";
+import "./style.css";
 
-const settings = definePluginSettings({
-    icons: {
-        type: OptionType.BOOLEAN,
-        description: "Always animate server icons, avatars, decor and more",
-        default: true,
-    },
-    statusEmojis: {
-        type: OptionType.BOOLEAN,
-        description: "Always animate status emojis",
-        default: true,
-    },
-    serverBanners: {
-        type: OptionType.BOOLEAN,
-        description: "Always animate server banners",
-        default: true,
-    },
-    nameplates: {
-        type: OptionType.BOOLEAN,
-        description: "Always animate nameplates",
-        default: true,
-    },
-    roleGradients: {
-        type: OptionType.BOOLEAN,
-        description: "Always animate role gradients",
-        default: true,
-    },
-    nameStyles: {
-        type: OptionType.BOOLEAN,
-        description: "Always play display name style effects (gradient, gummy, prism and the rest) instead of only while hovering",
-        default: true,
-        restartNeeded: true,
-    }
-});
+import definePlugin from "@utils/types";
+
+import { on, startGate, stopGate } from "./gate";
+import { settings } from "./settings";
+import { sweep } from "./sweeps";
 
 export default definePlugin({
     name: "AlwaysAnimateTuned",
@@ -49,7 +19,15 @@ export default definePlugin({
     authors: [{ name: "heart_menace", id: 281162701303185408n }],
     settings,
 
-    on: () => WindowStore.isFocused(),
+    on,
+
+    start() {
+        startGate();
+    },
+
+    stop() {
+        stopGate();
+    },
 
     patches: [
         {
@@ -59,12 +37,7 @@ export default definePlugin({
             noWarn: true,
             replacement: {
                 match: /canAnimate:(.+?)([,}].*?\))/g,
-                replace: (m, value, rest) => {
-                    if (/}=.+/.test(rest)) return m;
-                    if (value.startsWith("\"")) return m;
-                    if (value === "!1") return m;
-                    return `canAnimate:$self.on()${rest}`;
-                }
+                replace: sweep("canAnimate")
             }
         },
         {
@@ -140,12 +113,7 @@ export default definePlugin({
             noWarn: true,
             replacement: {
                 match: /animateGradient:(.+?)([,}].*?\))/g,
-                replace: (m, value, rest) => {
-                    if (/}=.+/.test(rest)) return m;
-                    if (value.startsWith("\"")) return m;
-                    if (value === "!1") return m;
-                    return `animateGradient:$self.on()${rest}`;
-                }
+                replace: sweep("animateGradient")
             }
         },
     ]

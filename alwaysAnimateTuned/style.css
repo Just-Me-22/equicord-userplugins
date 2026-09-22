@@ -1,0 +1,13 @@
+body.vc-aat-frozen [class*="nameplate"] video,
+body.vc-aat-frozen [class*="decoration"] video,
+body.vc-aat-frozen [class*="profileEffect"] video {
+    animation-play-state: paused !important;
+}
+
+body.vc-aat-offscreen img[class*="avatar_"],
+body.vc-aat-offscreen img[class*="avatarDecoration"],
+body.vc-aat-offscreen [class*="nameplate"] video,
+body.vc-aat-offscreen [class*="profileEffect"] video,
+body.vc-aat-offscreen [class*="banner"] video {
+    content-visibility: auto;
+}
