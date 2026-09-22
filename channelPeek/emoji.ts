@@ -64,7 +64,9 @@ const AUTO = [
 
 const autoCache = new Map<string, string | null>();
 
-function autoEmojiFor(name: string) {
+function autoEmojiFor(name: string | undefined) {
+    if (!name) return null;
+
     const cached = autoCache.get(name);
     if (cached !== undefined) return cached;
 

@@ -7,12 +7,14 @@
 import { classNameFactory } from "@utils/css";
 import { sendMessage } from "@utils/discord";
 import { Channel } from "@vencord/discord-types";
-import { ChannelStore, createRoot, useEffect, useRef, useState } from "@webpack/common";
+import { ChannelStore, createRoot, Popout, useEffect, useRef, useState } from "@webpack/common";
 import type { Root } from "react-dom/client";
 
 import { emojiMarkup, EmojiSelectPayload, ReactionEmojiPicker } from "./picker";
 
 const cl = classNameFactory("vc-channel-peek-");
+
+const LAYERED = '[class*="layerContainer"], [class*="popout"], [class*="emojiPicker"], [class*="contentWrapper"]';
 
 let root: Root | undefined;
 let host: HTMLDivElement | undefined;
@@ -24,8 +26,8 @@ function close() {
 function Composer({ channel, anchor }: { channel: Channel; anchor: DOMRect; }) {
     const [value, setValue] = useState("");
     const [sending, setSending] = useState(false);
-    const [picking, setPicking] = useState(false);
     const input = useRef<HTMLInputElement>(null);
+    const trigger = useRef<HTMLButtonElement>(null);
     const caret = useRef(0);
 
     useEffect(() => {
@@ -35,7 +37,10 @@ function Composer({ channel, anchor }: { channel: Channel; anchor: DOMRect; }) {
             if (e.key === "Escape") close();
         };
         const onDown = (e: MouseEvent) => {
-            if (!host?.contains(e.target as Node)) close();
+            const target = e.target as Element | null;
+            if (host?.contains(target)) return;
+            if (target?.closest?.(LAYERED)) return;
+            close();
         };
 
         document.addEventListener("keydown", onKey);
@@ -60,24 +65,26 @@ function Composer({ channel, anchor }: { channel: Channel; anchor: DOMRect; }) {
     };
 
     const insert = (text: string) => {
-        const at = Math.min(caret.current, value.length);
-        const next = value.slice(0, at) + text + value.slice(at);
-        caret.current = at + text.length;
-        setValue(next);
+        setValue(current => {
+            const at = Math.min(caret.current, current.length);
+            const next = current.slice(0, at) + text + current.slice(at);
+            caret.current = at + text.length;
 
-        requestAnimationFrame(() => {
-            input.current?.focus();
-            input.current?.setSelectionRange(caret.current, caret.current);
+            requestAnimationFrame(() => {
+                input.current?.focus();
+                input.current?.setSelectionRange(caret.current, caret.current);
+            });
+            return next;
         });
     };
 
     const rememberCaret = () => {
-        caret.current = input.current?.selectionStart ?? value.length;
+        caret.current = input.current?.selectionStart ?? caret.current;
     };
 
-    const top = Math.max(8, Math.min(anchor.top, window.innerHeight - (picking ? 480 : 90)));
+    const top = Math.max(8, Math.min(anchor.top, window.innerHeight - 90));
 
-    return <div className={cl("reply", { "reply-wide": picking })} style={{ left: anchor.right + 8, top }}>
+    return <div className={cl("reply")} style={{ left: anchor.right + 8, top }}>
         <div className={cl("reply-target")}>#{channel.name}</div>
         <div className={cl("reply-row")}>
             <input
@@ -92,35 +99,42 @@ function Composer({ channel, anchor }: { channel: Channel; anchor: DOMRect; }) {
                 }}
                 onKeyUp={rememberCaret}
                 onClick={rememberCaret}
-                onBlur={rememberCaret}
                 onKeyDown={e => {
                     if (e.key !== "Enter" || e.shiftKey) return;
                     e.preventDefault();
                     send();
                 }}
             />
-            <button
-                className={cl("reply-emoji", { "reply-emoji-on": picking })}
-                aria-label="Pick an emoji"
-                aria-expanded={picking}
-                onClick={() => setPicking(!picking)}
+            <Popout
+                position="bottom"
+                align="right"
+                targetElementRef={trigger}
+                renderPopout={({ closePopout }: { closePopout: () => void; }) => (
+                    <ReactionEmojiPicker
+                        channel={channel}
+                        closePopout={closePopout}
+                        onSelectEmoji={({ emoji, willClose }: { emoji: EmojiSelectPayload | null; willClose: boolean; }) => {
+                            const markup = emojiMarkup(emoji);
+                            if (markup) insert(markup);
+                            if (willClose) closePopout();
+                        }}
+                    />
+                )}
             >
-                <svg width={16} height={16} viewBox="0 0 24 24">
-                    <path fill="currentColor" d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20Zm0 18a8 8 0 1 1 0-16 8 8 0 0 1 0 16ZM9 9.5a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0Zm9 0a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0ZM12 18a5.5 5.5 0 0 0 5-3.2 1 1 0 0 0-1.8-.9A3.5 3.5 0 0 1 12 16a3.5 3.5 0 0 1-3.2-2.1 1 1 0 1 0-1.8.9A5.5 5.5 0 0 0 12 18Z" />
-                </svg>
-            </button>
+                {(popoutProps: any) => (
+                    <button
+                        {...popoutProps}
+                        ref={trigger}
+                        className={cl("reply-emoji")}
+                        aria-label="Pick an emoji"
+                    >
+                        <svg width={16} height={16} viewBox="0 0 24 24">
+                            <path fill="currentColor" d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20Zm0 18a8 8 0 1 1 0-16 8 8 0 0 1 0 16ZM9 9.5a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0Zm9 0a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0ZM12 18a5.5 5.5 0 0 0 5-3.2 1 1 0 0 0-1.8-.9A3.5 3.5 0 0 1 12 16a3.5 3.5 0 0 1-3.2-2.1 1 1 0 1 0-1.8.9A5.5 5.5 0 0 0 12 18Z" />
+                        </svg>
+                    </button>
+                )}
+            </Popout>
         </div>
-        {picking && <div className={cl("reply-picker")}>
-            <ReactionEmojiPicker
-                channel={channel}
-                closePopout={() => setPicking(false)}
-                onSelectEmoji={({ emoji, willClose }: { emoji: EmojiSelectPayload | null; willClose: boolean; }) => {
-                    const markup = emojiMarkup(emoji);
-                    if (markup) insert(markup);
-                    if (willClose) setPicking(false);
-                }}
-            />
-        </div>}
     </div>;
 }
 

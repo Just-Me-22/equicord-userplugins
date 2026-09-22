@@ -7,6 +7,7 @@
 import "./style.css";
 
 import { NavContextMenuPatchCallback } from "@api/ContextMenu";
+import { Logger } from "@utils/Logger";
 import definePlugin from "@utils/types";
 import { Channel } from "@vencord/discord-types";
 import { ChannelType } from "@vencord/discord-types/enums";
@@ -24,6 +25,8 @@ import Preview from "./Preview";
 import { destroyQuickReply } from "./QuickReply";
 import { hooks, settings } from "./settings";
 
+const logger = new Logger("ChannelPeek");
+
 const TEXTUAL = [ChannelType.GUILD_TEXT, ChannelType.GUILD_ANNOUNCEMENT];
 const VOICE = [ChannelType.GUILD_VOICE, ChannelType.GUILD_STAGE_VOICE];
 
@@ -38,12 +41,18 @@ function toggleInList(key: "mutedPreviews" | "mutedGuilds", id: string) {
         : [...current, id];
 }
 
+function threadsOf(record: unknown) {
+    return Object.values((record ?? {}) as Record<string, any>)
+        .map(entry => entry?.channel ?? entry)
+        .filter((post): post is Channel => Boolean(post?.id));
+}
+
 function newestForumPost(channel: Channel) {
     const { guild_id: guildId, id } = channel;
     const posts = [
-        ...Object.values(ActiveJoinedThreadsStore.getActiveJoinedThreadsForParent(guildId, id) ?? {}),
-        ...Object.values(ActiveJoinedThreadsStore.getActiveUnjoinedThreadsForParent(guildId, id) ?? {})
-    ].map(entry => entry.channel);
+        ...threadsOf(ActiveJoinedThreadsStore.getActiveJoinedThreadsForParent(guildId, id)),
+        ...threadsOf(ActiveJoinedThreadsStore.getActiveUnjoinedThreadsForParent(guildId, id))
+    ];
 
     if (!posts.length) return undefined;
 
@@ -108,6 +117,26 @@ const guildContext: NavContextMenuPatchCallback = (children, { guild }: { guild:
     );
 };
 
+function subtitleFor(channel: Channel) {
+    if (!channel || !previewable(channel)) return undefined;
+
+    if (listed(settings.store.mutedPreviews as string[], channel.id)) return undefined;
+    if (channel.guild_id && listed(settings.store.mutedGuilds as string[], channel.guild_id)) return undefined;
+
+    if (settings.store.mutedChannels === "hide" && UserGuildSettingsStore.isChannelMuted(channel.guild_id, channel.id)) return undefined;
+
+    if (channel.type === ChannelType.GUILD_FORUM) {
+        const post = newestForumPost(channel);
+        return post ? <Preview channel={post} /> : undefined;
+    }
+
+    if (VOICE.includes(channel.type)) return <Preview channel={channel} />;
+
+    if (!channel.lastMessageId && !MessageStore.getLastMessage(channel.id)) return undefined;
+
+    return <Preview channel={channel} />;
+}
+
 function onChannelSelect() {
     attachFilterBar();
     refreshFilter();
@@ -171,30 +200,24 @@ export default definePlugin({
     },
 
     getSubtitle(props: { channel: Channel; }) {
-        const { channel } = props;
-        if (!channel || !previewable(channel)) return undefined;
-
-        if (listed(settings.store.mutedPreviews as string[], channel.id)) return undefined;
-        if (channel.guild_id && listed(settings.store.mutedGuilds as string[], channel.guild_id)) return undefined;
-
-        if (settings.store.mutedChannels === "hide" && UserGuildSettingsStore.isChannelMuted(channel.guild_id, channel.id)) return undefined;
-
-        if (channel.type === ChannelType.GUILD_FORUM) {
-            const post = newestForumPost(channel);
-            return post ? <Preview channel={post} /> : undefined;
+        try {
+            return subtitleFor(props.channel);
+        } catch (err) {
+            logger.error("subtitle failed", err);
+            return undefined;
         }
-
-        if (VOICE.includes(channel.type)) return <Preview channel={channel} />;
-
-        if (!channel.lastMessageId && !MessageStore.getLastMessage(channel.id)) return undefined;
-
-        return <Preview channel={channel} />;
     },
 
     renderChannelIcon(props: { channel: Channel; containerClassName?: string; }) {
         const { channel } = props;
         if (!channel || !TEXTUAL.includes(channel.type)) return null;
-        if (!resolveEmoji(channel)) return null;
+
+        try {
+            if (!resolveEmoji(channel)) return null;
+        } catch (err) {
+            logger.error("emoji lookup failed", err);
+            return null;
+        }
 
         return <ChannelIcon channel={channel} containerClassName={props.containerClassName} />;
     }
