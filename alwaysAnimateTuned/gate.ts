@@ -29,6 +29,7 @@ let resuming: HTMLVideoElement[] = [];
 let seen = new Set<HTMLVideoElement>();
 let observer: IntersectionObserver | undefined;
 const offscreen = new WeakSet<HTMLVideoElement>();
+const held = new WeakSet<HTMLVideoElement>();
 const scrolled = new WeakMap<Element, { top: number; left: number; at: number; }>();
 let pointer = { x: 0, y: 0 };
 let lastInput = Date.now();
@@ -89,9 +90,18 @@ function reobserve(all: HTMLVideoElement[]) {
     seen = next;
 }
 
+function hold(video: HTMLVideoElement) {
+    if (video.paused) return;
+    video.pause();
+    held.add(video);
+}
+
 function resume() {
     resumeFrame = 0;
-    for (const video of resuming.splice(0, RESUME_PER_FRAME)) video.play().catch(() => { });
+    for (const video of resuming.splice(0, RESUME_PER_FRAME)) {
+        held.delete(video);
+        video.play().catch(() => { });
+    }
     if (resuming.length) resumeFrame = requestAnimationFrame(resume);
 }
 
@@ -103,7 +113,7 @@ function runPass() {
     resuming = [];
 
     if (!on()) {
-        for (const video of all) video.pause();
+        for (const video of all) hold(video);
         return;
     }
 
@@ -122,8 +132,8 @@ function runPass() {
 
     const keep = new Set(playable);
     for (const video of all) {
-        if (!keep.has(video)) video.pause();
-        else if (video.paused) resuming.push(video);
+        if (!keep.has(video)) hold(video);
+        else if (video.paused && (held.has(video) || video.autoplay)) resuming.push(video);
     }
     if (resuming.length && !resumeFrame) resumeFrame = requestAnimationFrame(resume);
 }
