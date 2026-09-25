@@ -5,6 +5,7 @@
  */
 
 import definePlugin, { PluginNative } from "@utils/types";
+import { FluxDispatcher } from "@webpack/common";
 
 const Native = VencordNative.pluginHelpers.FreezeLog as PluginNative<typeof import("./native")>;
 
@@ -16,6 +17,18 @@ interface Script {
     sourceFunctionName: string;
     sourceURL: string;
     sourceCharPosition: number;
+}
+
+interface Dispatch {
+    type: string;
+    at: number;
+    ms: number;
+    stores: [string, number][];
+}
+
+interface ActionLogger {
+    on(event: string, listener: (...args: any[]) => void): void;
+    off(event: string, listener: (...args: any[]) => void): void;
 }
 
 interface Frame extends PerformanceEntry {
@@ -32,6 +45,29 @@ let observer: PerformanceObserver | undefined;
 let timer: ReturnType<typeof setInterval> | undefined;
 let pending: string[] = [];
 const recent: { type: string; at: number; }[] = [];
+const dispatches: Dispatch[] = [];
+let current: Dispatch | undefined;
+
+const logger = () => (FluxDispatcher as any).actionLogger as ActionLogger;
+
+function begin(action: { type: string; }) {
+    current = { type: action.type, at: performance.now(), ms: 0, stores: [] };
+    return false;
+}
+
+function trace(_type: string, store: string, ms: number) {
+    if (current && ms >= 2) current.stores.push([store, Math.round(ms)]);
+}
+
+function end() {
+    if (!current) return;
+    current.ms = Math.round(performance.now() - current.at);
+    if (current.ms >= 10) {
+        dispatches.push(current);
+        if (dispatches.length > 30) dispatches.shift();
+    }
+    current = undefined;
+}
 
 function note(event: Event) {
     if ((event.type === "focus" || event.type === "blur") && event.target !== window) return;
@@ -65,6 +101,13 @@ function record(frame: Frame) {
         before: recent
             .filter(e => e.at > start - 1000 && e.at < end)
             .map(e => `${e.type} ${Math.round(e.at - start)}`),
+        flux: dispatches
+            .filter(d => d.at >= start && d.at < end)
+            .map(d => ({
+                type: d.type,
+                ms: d.ms,
+                stores: d.stores.sort((a, b) => b[1] - a[1]).slice(0, 6)
+            })),
         scripts: [...frame.scripts]
             .sort((a, b) => b.duration - a.duration)
             .slice(0, 5)
@@ -92,6 +135,10 @@ export default definePlugin({
     start() {
         for (const type of INPUTS) window.addEventListener(type, note, { capture: true, passive: true });
 
+        FluxDispatcher.addInterceptor(begin);
+        logger().on("trace", trace);
+        logger().on("log", end);
+
         observer = new PerformanceObserver(list => {
             for (const frame of list.getEntries() as Frame[])
                 if (frame.duration >= THRESHOLD) record(frame);
@@ -103,6 +150,11 @@ export default definePlugin({
 
     stop() {
         for (const type of INPUTS) window.removeEventListener(type, note, { capture: true });
+
+        const interceptors: unknown[] = FluxDispatcher._interceptors;
+        interceptors.splice(interceptors.indexOf(begin), 1);
+        logger().off("trace", trace);
+        logger().off("log", end);
         observer?.disconnect();
         clearInterval(timer);
         flush();
