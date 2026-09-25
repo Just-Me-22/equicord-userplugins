@@ -7,6 +7,7 @@
 import definePlugin from "@utils/types";
 
 const HOVER = "vc-region-hover";
+const RING = "vc-region-ring";
 const BASE = '[class*="baseLayer_"] > div[class*="base__"]';
 const REGIONS = [
     `${BASE} > div[class*="bar_"]`,
@@ -17,13 +18,11 @@ const REGIONS = [
     'main[class*="chatContent"]'
 ].join(",");
 
-let lit: Element | null = null;
+let ring: HTMLDivElement | undefined;
 
 function light(base: Element | null) {
-    if (base === lit) return;
-    lit?.classList.remove(HOVER);
-    base?.classList.add(HOVER);
-    lit = base;
+    if (base && ring!.parentElement !== base) base.append(ring!);
+    ring!.classList.toggle(HOVER, base !== null);
 }
 
 function onOver(e: PointerEvent) {
@@ -37,10 +36,13 @@ function onOut(e: PointerEvent) {
 
 export default definePlugin({
     name: "NoFullRestyle",
-    description: "Stops three things that make Discord re-style the whole app: the screen reader announcer being moved to the start of the page when a modal opens, the focus class flipping on the page root when the window gains or loses focus, and the mouse/keyboard class flipping when you switch between typing and clicking. Loading spinners keep spinning while Discord is in the background, and keyboard focus outlines no longer show. Also marks the app while you hover the server list, channel list or chat, so a theme can light it up without a :has() rule",
+    description: "Stops three things that make Discord re-style the whole app: the screen reader announcer being moved to the start of the page when a modal opens, the focus class flipping on the page root when the window gains or loses focus, and the mouse/keyboard class flipping when you switch between typing and clicking. Loading spinners keep spinning while Discord is in the background, and keyboard focus outlines no longer show. Also marks the app while you hover the server list, channel list or chat, so a theme can light it up without a :has() rule. The class goes on an empty .vc-region-ring overlay inside it.",
     authors: [{ name: "heart_menace", id: 281162701303185408n }],
 
     start() {
+        ring = document.createElement("div");
+        ring.className = RING;
+        ring.style.cssText = "position:absolute;inset:0;pointer-events:none";
         document.addEventListener("pointerover", onOver, { passive: true });
         document.addEventListener("pointerout", onOut, { passive: true });
     },
@@ -48,7 +50,8 @@ export default definePlugin({
     stop() {
         document.removeEventListener("pointerover", onOver);
         document.removeEventListener("pointerout", onOut);
-        light(null);
+        ring?.remove();
+        ring = undefined;
     },
 
     patches: [
