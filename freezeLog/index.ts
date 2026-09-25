@@ -38,13 +38,26 @@ interface Frame extends PerformanceEntry {
     scripts: Script[];
 }
 
+interface Chain {
+    type: string;
+    first: number;
+    last: number;
+    count: number;
+    overlaps: number;
+    busy: number;
+}
+
 const THRESHOLD = 200;
 const SLOW_MESSAGE = 60;
+const SLOW_LOAD = 1000;
+const CHAIN_GAP = 2000;
+const CHAIN_MIN = 5;
 const CHAT = 'ol[data-list-id="chat-messages"]';
 const BIG = 1500;
 const INPUTS = ["pointerdown", "keydown", "wheel", "focus", "blur"];
 
 let observer: PerformanceObserver | undefined;
+let loads: PerformanceObserver | undefined;
 let watcher: MutationObserver | undefined;
 const changes: { at: number; what: string; }[] = [];
 let timer: ReturnType<typeof setInterval> | undefined;
@@ -56,9 +69,10 @@ let lastMessage = 0;
 let lastFast = 0;
 let lastWasSlow = false;
 const opened = new WeakMap<Element, number>();
-const checked = new WeakSet<Element>();
+const chains = new Map<string, Chain>();
 
 const logger = () => (FluxDispatcher as any).actionLogger as ActionLogger;
+const iso = (time: number) => new Date(performance.timeOrigin + time).toISOString();
 
 function chat() {
     const list = document.querySelector(CHAT);
@@ -84,10 +98,8 @@ function trace(_type: string, store: string, ms: number) {
 function end() {
     if (!current) return;
     current.ms = Math.round(performance.now() - current.at);
-    if (current.ms >= 10) {
-        dispatches.push(current);
-        if (dispatches.length > 30) dispatches.shift();
-    }
+    dispatches.push(current);
+    if (dispatches.length > 100) dispatches.shift();
     current = undefined;
 }
 
@@ -102,6 +114,30 @@ function describe(el: Element | null | undefined) {
     const label = el.getAttribute("aria-label") ?? el.getAttribute("placeholder") ?? el.id;
     const name = el.className && typeof el.className === "string" ? el.className.split(/\s/)[0] : "";
     return `${el.tagName.toLowerCase()} ${name} ${label ?? ""}`.trim();
+}
+
+function topmost() {
+    return [...document.querySelectorAll('[role="dialog"], [id^="popout_"]')].pop();
+}
+
+function nameOf(el: Element | undefined) {
+    if (!el) return null;
+    const heading = el.getAttribute("aria-labelledby");
+    const text = el.getAttribute("aria-label")
+        || (heading && document.getElementById(heading)?.textContent)
+        || el.querySelector("h1, h2, [role=heading]")?.textContent;
+    return text?.trim().slice(0, 60) || describe(el);
+}
+
+function events(start: number, end: number) {
+    const out: { type: string; at: number; times: number; }[] = [];
+    for (const d of dispatches) {
+        if (d.at <= start - 1000 || d.at >= end) continue;
+        const prev = out[out.length - 1];
+        if (prev?.type === d.type) prev.times++;
+        else out.push({ type: d.type, at: d.at, times: 1 });
+    }
+    return out.map(e => `${Math.round(e.at - start)} ${e.type}${e.times > 1 ? ` x${e.times}` : ""}`);
 }
 
 function tokens(attr: string, value: string | null) {
@@ -144,35 +180,10 @@ function styleOf(frame: Frame) {
     return frame.styleAndLayoutStart ? frame.startTime + frame.duration - frame.styleAndLayoutStart : 0;
 }
 
-function insertCost(parent: Element) {
-    const row = document.createElement("li");
-    document.body.offsetHeight;
-    const start = performance.now();
-    parent.append(row);
-    getComputedStyle(row).color;
-    const ms = performance.now() - start;
-    row.remove();
-    return Math.round(ms);
-}
-
-function compare(list: Element) {
-    if (!list.isConnected) return;
-    const copy = list.cloneNode(true) as Element;
-    list.after(copy);
-    document.body.offsetHeight;
-    const fresh = insertCost(copy);
-    copy.remove();
-    pending.push(JSON.stringify({ at: new Date().toISOString(), kind: "list check", list: insertCost(list), fresh }));
-}
-
 function messageInfo() {
     lastWasSlow = true;
     const list = chat();
     if (!list) return null;
-    if (!checked.has(list)) {
-        checked.add(list);
-        requestIdleCallback(() => compare(list), { timeout: 2000 });
-    }
     return {
         listAge: Math.round((performance.now() - opened.get(list)!) / 1000),
         rows: list.childElementCount,
@@ -185,7 +196,7 @@ function record(frame: Frame, message: boolean) {
     const end = start + frame.duration;
 
     pending.push(JSON.stringify({
-        at: new Date(performance.timeOrigin + start).toISOString(),
+        at: iso(start),
         ms: Math.round(frame.duration),
         blocking: Math.round(frame.blockingDuration),
         style: Math.round(styleOf(frame)),
@@ -193,18 +204,19 @@ function record(frame: Frame, message: boolean) {
         focused: document.hasFocus(),
         hidden: document.hidden,
         path: location.pathname,
-        open: describe([...document.querySelectorAll('[role="dialog"], [id^="popout_"]')].pop()),
+        open: nameOf(topmost()),
         focus: describe(document.activeElement),
         elements: document.getElementsByTagName("*").length,
         message: message ? messageInfo() : undefined,
         before: recent
             .filter(e => e.at > start - 1000 && e.at < end)
             .map(e => `${e.type} ${Math.round(e.at - start)}`),
+        events: events(start, end),
         changes: changes
             .filter(c => c.at > start - 1000 && c.at < end)
             .map(c => `${Math.round(c.at - start)} ${c.what}`),
         flux: dispatches
-            .filter(d => d.at >= start && d.at < end)
+            .filter(d => d.ms >= 10 && d.at >= start && d.at < end)
             .map(d => ({
                 type: d.type,
                 ms: d.ms,
@@ -223,9 +235,80 @@ function record(frame: Frame, message: boolean) {
     }));
 }
 
+function short(url: string) {
+    const { host, pathname, searchParams } = new URL(url);
+    for (const key of ["ex", "is", "hm"]) searchParams.delete(key);
+    const query = searchParams.toString();
+    return `${host}${pathname}${query && "?" + query}`.replace(/\d{15,}|(?:a_)?[0-9a-f]{32}/g, "#");
+}
+
+function reportChain(route: string, chain: Chain) {
+    chains.delete(route);
+    const span = chain.last - chain.first;
+    if (chain.count < CHAIN_MIN || chain.overlaps > chain.count / 4 || span < CHAIN_GAP) return;
+
+    pending.push(JSON.stringify({
+        at: iso(chain.first),
+        kind: "single-file chain",
+        type: chain.type,
+        route,
+        count: chain.count,
+        ms: Math.round(span),
+        between: Math.max(0, Math.round(span - chain.busy))
+    }));
+}
+
+function addToChain(route: string, entry: PerformanceResourceTiming) {
+    const end = entry.startTime + entry.duration;
+    const chain = chains.get(route);
+
+    if (!chain || entry.startTime - chain.last > CHAIN_GAP) {
+        if (chain) reportChain(route, chain);
+        chains.set(route, { type: entry.initiatorType, first: entry.startTime, last: end, count: 1, overlaps: 0, busy: entry.duration });
+        return;
+    }
+
+    if (entry.startTime < chain.last) chain.overlaps++;
+    chain.last = Math.max(chain.last, end);
+    chain.count++;
+    chain.busy += entry.duration;
+}
+
+function loaded(list: PerformanceObserverEntryList) {
+    const entries = list.getEntries() as PerformanceResourceTiming[];
+    const open = entries.some(e => e.duration >= SLOW_LOAD) ? nameOf(topmost()) : null;
+
+    for (const entry of entries) {
+        const route = short(entry.name);
+        if (entry.responseStatus === 429) pending.push(JSON.stringify({ at: iso(entry.startTime), kind: "rate limited", route }));
+
+        if (entry.duration >= SLOW_LOAD) {
+            const timed = entry.requestStart > 0;
+            pending.push(JSON.stringify({
+                at: iso(entry.startTime),
+                kind: "slow load",
+                type: entry.initiatorType,
+                route,
+                ms: Math.round(entry.duration),
+                waiting: timed ? Math.round(entry.requestStart - entry.startTime) : undefined,
+                server: timed ? Math.round(entry.responseStart - entry.requestStart) : undefined,
+                downloading: timed ? Math.round(entry.responseEnd - entry.responseStart) : undefined,
+                kb: Math.round(entry.decodedBodySize / 1024) || undefined,
+                status: entry.responseStatus || undefined,
+                path: location.pathname,
+                open
+            }));
+        }
+
+        addToChain(route, entry);
+    }
+}
+
 function flush() {
     chat();
     watchBig();
+    const now = performance.now();
+    for (const [route, chain] of chains) if (now - chain.last > CHAIN_GAP) reportChain(route, chain);
     if (!pending.length) return;
     Native.append(pending.join("\n") + "\n");
     pending = [];
@@ -233,10 +316,11 @@ function flush() {
 
 export default definePlugin({
     name: "FreezeLog",
-    description: "Writes every freeze longer than 200ms, and every new chat message that takes more than 60ms to style, to freezeLog/freezes.jsonl in the Equicord folder, with the scripts that ran and what you did just before it.",
+    description: "Writes freezes over 200ms, chat messages slower than 60ms to style, loads over 1s, requests sent one at a time and rate limits to freezeLog/freezes.jsonl in the Equicord folder.",
     authors: [{ name: "heart_menace", id: 281162701303185408n }],
 
     start() {
+        pending.push(JSON.stringify({ at: new Date().toISOString(), kind: "start", sinceLoad: Math.round(performance.now() / 1000) }));
         for (const type of INPUTS) window.addEventListener(type, note, { capture: true, passive: true });
 
         FluxDispatcher.addInterceptor(begin);
@@ -250,6 +334,9 @@ export default definePlugin({
             }
         });
         observer.observe({ type: "long-animation-frame", buffered: true });
+
+        loads = new PerformanceObserver(loaded);
+        loads.observe({ type: "resource", buffered: true });
 
         watcher = new MutationObserver(watched);
         watchBig();
@@ -265,8 +352,10 @@ export default definePlugin({
         logger().off("trace", trace);
         logger().off("log", end);
         observer?.disconnect();
+        loads?.disconnect();
         watcher?.disconnect();
         clearInterval(timer);
         flush();
+        chains.clear();
     }
 });
