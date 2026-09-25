@@ -114,5 +114,12 @@ export default definePlugin({
                 replace: sweep("animateGradient")
             }
         },
+        {
+            find: 'location:"Nameplate_Asset"',
+            replacement: {
+                match: /(location:"Nameplate_Asset"\}\).{0,200}?animate:(\i),loop:\i,preload:)(\i)/,
+                replace: '$1$2?$3:"none"'
+            }
+        },
     ]
 });
