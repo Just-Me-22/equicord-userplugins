@@ -115,6 +115,22 @@ export default definePlugin({
             }
         },
         {
+            find: "dotCycle:2.8",
+            predicate: () => settings.store.stillTypingDots,
+            replacement: {
+                match: /\{focused:(\i)\}=\(0,\i\.\i\)\(\)/,
+                replace: "$1=!1"
+            }
+        },
+        {
+            find: 'width:"100%",height:"100%",children:[0,1,2].map',
+            predicate: () => settings.store.stillTypingDots,
+            replacement: {
+                match: /\{focused:(\i)\}=\(0,\i\.\i\)\(\)/,
+                replace: "$1=!1"
+            }
+        },
+        {
             find: 'location:"Nameplate_Asset"',
             replacement: [
                 {
