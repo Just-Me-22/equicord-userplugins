@@ -8,7 +8,7 @@ import "./style.css";
 
 import definePlugin from "@utils/types";
 
-import { on, startGate, stopGate } from "./gate";
+import { NAMEPLATE, on, startGate, stopGate } from "./gate";
 import { settings } from "./settings";
 import { sweep } from "./sweeps";
 
@@ -116,10 +116,16 @@ export default definePlugin({
         },
         {
             find: 'location:"Nameplate_Asset"',
-            replacement: {
-                match: /(location:"Nameplate_Asset"\}\).{0,200}?animate:(\i),loop:\i,preload:)(\i)/,
-                replace: '$1$2?$3:"none"'
-            }
+            replacement: [
+                {
+                    match: /(location:"Nameplate_Asset"\}\).{0,200}?animate:(\i),loop:\i,preload:)(\i)/,
+                    replace: '$1$2?$3:"none"'
+                },
+                {
+                    match: /(location:"Nameplate_Asset"\}\).{0,300}?preload:.{0,40}?className:)(\i)(?=\}\))/,
+                    replace: `$1$2+" ${NAMEPLATE}"`
+                }
+            ]
         },
     ]
 });

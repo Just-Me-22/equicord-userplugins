@@ -82,6 +82,11 @@ export const settings = definePluginSettings({
         description: "Stop animating while you are typing in a text box.",
         default: true
     },
+    pauseWhilePicking: {
+        type: OptionType.BOOLEAN,
+        description: "Pause nameplate videos while the emoji, GIF or sticker picker is open.",
+        default: true
+    },
     pauseOffscreen: {
         type: OptionType.BOOLEAN,
         description: "Only animate what is actually on screen.",

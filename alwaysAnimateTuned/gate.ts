@@ -4,11 +4,12 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
-import { WindowStore } from "@webpack/common";
+import { ExpressionPickerStore, WindowStore } from "@webpack/common";
 
 import { settings } from "./settings";
 
 const OFFSCREEN = "vc-aat-offscreen";
+export const NAMEPLATE = "vc-aat-nameplate";
 const SCROLL_SETTLE = 150;
 const TYPING_SETTLE = 700;
 const RESUME_PER_FRAME = 4;
@@ -37,6 +38,13 @@ let settledAt = 0;
 let settleTimer: ReturnType<typeof setTimeout> | undefined;
 let inputAttached = false;
 let wasAwake: boolean | undefined;
+let picking = false;
+let unsubscribePicker: (() => void) | undefined;
+
+interface PickerStore {
+    getState(): { activeView: unknown; };
+    subscribe(listener: (state: { activeView: unknown; }) => void): () => void;
+}
 
 function idle() {
     const { idleAfter } = settings.store;
@@ -119,6 +127,7 @@ function runPass() {
     let playable = all;
     if (settings.store.pauseOffscreen) playable = playable.filter(video => !offscreen.has(video));
     if (settings.store.hoverOnly) playable = playable.filter(under);
+    if (settings.store.pauseWhilePicking && picking) playable = playable.filter(video => !video.classList.contains(NAMEPLATE));
 
     const cap = settings.store.maxAnimated;
     if (cap > 0 && playable.length > cap) {
@@ -276,6 +285,14 @@ export function startGate() {
     document.addEventListener("visibilitychange", refreshGate);
     document.addEventListener("scroll", onScroll, { capture: true, passive: true });
     WindowStore.addChangeListener(refreshGate);
+    const picker = ExpressionPickerStore.useExpressionPickerStore as unknown as PickerStore;
+    picking = picker.getState().activeView != null;
+    unsubscribePicker = picker.subscribe(state => {
+        const open = state.activeView != null;
+        if (open === picking) return;
+        picking = open;
+        schedulePass();
+    });
     idleTimer = setInterval(() => {
         if (settings.store.idleAfter > 0) refreshGate();
     }, 5000);
@@ -288,6 +305,9 @@ export function stopGate() {
     document.removeEventListener("visibilitychange", refreshGate);
     document.removeEventListener("scroll", onScroll, { capture: true });
     WindowStore.removeChangeListener(refreshGate);
+    unsubscribePicker?.();
+    unsubscribePicker = undefined;
+    picking = false;
     for (const [type, listener] of INPUT) document.removeEventListener(type, listener);
     inputAttached = false;
 
