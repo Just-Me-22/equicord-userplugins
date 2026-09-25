@@ -5,7 +5,7 @@
  */
 
 import definePlugin, { PluginNative } from "@utils/types";
-import { FluxDispatcher } from "@webpack/common";
+import { FluxDispatcher, SelectedChannelStore } from "@webpack/common";
 
 const Native = VencordNative.pluginHelpers.FreezeLog as PluginNative<typeof import("./native")>;
 
@@ -39,19 +39,41 @@ interface Frame extends PerformanceEntry {
 }
 
 const THRESHOLD = 200;
+const SLOW_MESSAGE = 60;
+const CHAT = 'ol[data-list-id="chat-messages"]';
+const BIG = 1500;
 const INPUTS = ["pointerdown", "keydown", "wheel", "focus", "blur"];
 
 let observer: PerformanceObserver | undefined;
+let watcher: MutationObserver | undefined;
+const changes: { at: number; what: string; }[] = [];
 let timer: ReturnType<typeof setInterval> | undefined;
 let pending: string[] = [];
 const recent: { type: string; at: number; }[] = [];
 const dispatches: Dispatch[] = [];
 let current: Dispatch | undefined;
+let lastMessage = 0;
+let lastFast = 0;
+let lastWasSlow = false;
+const opened = new WeakMap<Element, number>();
+const checked = new WeakSet<Element>();
 
 const logger = () => (FluxDispatcher as any).actionLogger as ActionLogger;
 
-function begin(action: { type: string; }) {
+function chat() {
+    const list = document.querySelector(CHAT);
+    if (list && !opened.has(list)) opened.set(list, performance.now());
+    return list;
+}
+
+function begin(action: { type: string; channelId?: string; }) {
     current = { type: action.type, at: performance.now(), ms: 0, stores: [] };
+    if (action.type === "MESSAGE_CREATE" && action.channelId === SelectedChannelStore.getChannelId()) {
+        if (lastMessage && !lastWasSlow) lastFast = lastMessage;
+        lastMessage = current.at;
+        lastWasSlow = false;
+        chat();
+    }
     return false;
 }
 
@@ -82,7 +104,83 @@ function describe(el: Element | null | undefined) {
     return `${el.tagName.toLowerCase()} ${name} ${label ?? ""}`.trim();
 }
 
-function record(frame: Frame) {
+function tokens(attr: string, value: string | null) {
+    return new Set((value ?? "").split(attr === "style" ? ";" : /\s+/).map(t => t.trim()).filter(Boolean));
+}
+
+function diff(attr: string, before: string | null, after: string | null) {
+    const was = tokens(attr, before), now = tokens(attr, after);
+    const added = [...now].filter(t => !was.has(t)), removed = [...was].filter(t => !now.has(t));
+    return `${added.length ? "+" + added.join(" +") : ""} ${removed.length ? "-" + removed.join(" -") : ""}`.trim().slice(0, 200);
+}
+
+function label(node: Node) {
+    const el = node instanceof Element ? node : node.parentElement;
+    return el ? describe(el) ?? el.tagName.toLowerCase() : node.nodeName;
+}
+
+function watched(records: MutationRecord[]) {
+    const at = performance.now();
+    for (const r of records) {
+        const what = r.type === "attributes"
+            ? `${label(r.target)} [${r.attributeName}] ${diff(r.attributeName!, r.oldValue, (r.target as Element).getAttribute(r.attributeName!))}`
+            : `head ${r.type} ${label(r.target)} +${r.addedNodes.length} -${r.removedNodes.length}`;
+        changes.push({ at, what });
+        if (changes.length > 40) changes.shift();
+    }
+}
+
+function watchBig() {
+    const queue: Element[] = [document.documentElement];
+    for (const el of queue) {
+        watcher!.observe(el, { attributes: true, attributeOldValue: true });
+        for (const child of el.children)
+            if (child !== document.head && child.getElementsByTagName("*").length >= BIG) queue.push(child);
+    }
+    watcher!.observe(document.head, { childList: true, subtree: true, characterData: true });
+}
+
+function styleOf(frame: Frame) {
+    return frame.styleAndLayoutStart ? frame.startTime + frame.duration - frame.styleAndLayoutStart : 0;
+}
+
+function insertCost(parent: Element) {
+    const row = document.createElement("li");
+    document.body.offsetHeight;
+    const start = performance.now();
+    parent.append(row);
+    getComputedStyle(row).color;
+    const ms = performance.now() - start;
+    row.remove();
+    return Math.round(ms);
+}
+
+function compare(list: Element) {
+    if (!list.isConnected) return;
+    const copy = list.cloneNode(true) as Element;
+    list.after(copy);
+    document.body.offsetHeight;
+    const fresh = insertCost(copy);
+    copy.remove();
+    pending.push(JSON.stringify({ at: new Date().toISOString(), kind: "list check", list: insertCost(list), fresh }));
+}
+
+function messageInfo() {
+    lastWasSlow = true;
+    const list = chat();
+    if (!list) return null;
+    if (!checked.has(list)) {
+        checked.add(list);
+        requestIdleCallback(() => compare(list), { timeout: 2000 });
+    }
+    return {
+        listAge: Math.round((performance.now() - opened.get(list)!) / 1000),
+        rows: list.childElementCount,
+        sinceFast: lastFast ? Math.round((lastMessage - lastFast) / 1000) : null
+    };
+}
+
+function record(frame: Frame, message: boolean) {
     const start = frame.startTime;
     const end = start + frame.duration;
 
@@ -90,7 +188,7 @@ function record(frame: Frame) {
         at: new Date(performance.timeOrigin + start).toISOString(),
         ms: Math.round(frame.duration),
         blocking: Math.round(frame.blockingDuration),
-        style: frame.styleAndLayoutStart ? Math.round(end - frame.styleAndLayoutStart) : 0,
+        style: Math.round(styleOf(frame)),
         render: frame.renderStart ? Math.round(end - frame.renderStart) : 0,
         focused: document.hasFocus(),
         hidden: document.hidden,
@@ -98,9 +196,13 @@ function record(frame: Frame) {
         open: describe([...document.querySelectorAll('[role="dialog"], [id^="popout_"]')].pop()),
         focus: describe(document.activeElement),
         elements: document.getElementsByTagName("*").length,
+        message: message ? messageInfo() : undefined,
         before: recent
             .filter(e => e.at > start - 1000 && e.at < end)
             .map(e => `${e.type} ${Math.round(e.at - start)}`),
+        changes: changes
+            .filter(c => c.at > start - 1000 && c.at < end)
+            .map(c => `${Math.round(c.at - start)} ${c.what}`),
         flux: dispatches
             .filter(d => d.at >= start && d.at < end)
             .map(d => ({
@@ -122,6 +224,8 @@ function record(frame: Frame) {
 }
 
 function flush() {
+    chat();
+    watchBig();
     if (!pending.length) return;
     Native.append(pending.join("\n") + "\n");
     pending = [];
@@ -129,7 +233,7 @@ function flush() {
 
 export default definePlugin({
     name: "FreezeLog",
-    description: "Writes every freeze longer than 200ms to freezeLog/freezes.jsonl in the Equicord folder, with the scripts that ran and what you did just before it.",
+    description: "Writes every freeze longer than 200ms, and every new chat message that takes more than 60ms to style, to freezeLog/freezes.jsonl in the Equicord folder, with the scripts that ran and what you did just before it.",
     authors: [{ name: "heart_menace", id: 281162701303185408n }],
 
     start() {
@@ -140,10 +244,15 @@ export default definePlugin({
         logger().on("log", end);
 
         observer = new PerformanceObserver(list => {
-            for (const frame of list.getEntries() as Frame[])
-                if (frame.duration >= THRESHOLD) record(frame);
+            for (const frame of list.getEntries() as Frame[]) {
+                const message = lastMessage >= frame.startTime - 300 && lastMessage < frame.startTime + frame.duration && styleOf(frame) >= SLOW_MESSAGE;
+                if (message || frame.duration >= THRESHOLD) record(frame, message);
+            }
         });
         observer.observe({ type: "long-animation-frame", buffered: true });
+
+        watcher = new MutationObserver(watched);
+        watchBig();
 
         timer = setInterval(flush, 10_000);
     },
@@ -156,6 +265,7 @@ export default definePlugin({
         logger().off("trace", trace);
         logger().off("log", end);
         observer?.disconnect();
+        watcher?.disconnect();
         clearInterval(timer);
         flush();
     }
