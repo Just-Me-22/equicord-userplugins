@@ -1,4 +1,4 @@
-# these eight have their own repos, cloned in by setup.sh
+# these nine have their own repos, cloned in by setup.sh
 alwaysShowDMNameplates/
 betterImageEditor/
 collectibleShelf/
@@ -7,5 +7,6 @@ profileSets/
 serverSafety/
 sidebarResizeLimits/
 userPanelServerProfile/
+workbench/
 
 node_modules/
