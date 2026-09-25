@@ -6,13 +6,61 @@
 
 import { classNameFactory } from "@utils/css";
 import { Channel, Message, MessageAttachment } from "@vencord/discord-types";
-import { Parser } from "@webpack/common";
+import { Constants, Parser, RestAPI, useEffect, useState } from "@webpack/common";
 
 import { settings } from "./settings";
 
 const cl = classNameFactory("vc-channel-peek-");
 
 const ONLY_LINK = /^<?(https?:\/\/\S+)>?$/;
+
+const fresh = new Map<string, string>();
+const asked = new Set<string>();
+const waiting = new Map<string, Set<(url: string) => void>>();
+const queued: string[] = [];
+
+function isExpired(url: string) {
+    return parseInt(new URL(url).searchParams.get("ex") ?? "", 16) * 1000 < Date.now();
+}
+
+function refreshQueued() {
+    const urls = queued.splice(0, 50);
+    if (queued.length) setTimeout(refreshQueued);
+
+    RestAPI.post({ url: Constants.Endpoints.ATTACHMENTS_REFRESH_URLS, body: { attachment_urls: urls } })
+        .then(({ body }: { body: { refreshed_urls: { original: string; refreshed: string; }[]; }; }) => {
+            for (const { original, refreshed } of body.refreshed_urls) {
+                if (!refreshed) continue;
+                fresh.set(original, refreshed);
+                waiting.get(original)?.forEach(notify => notify(refreshed));
+            }
+        })
+        .catch(() => { });
+}
+
+function useLiveUrl(url: string) {
+    const [live, setLive] = useState(() => isExpired(url) ? fresh.get(url) : url);
+
+    useEffect(() => {
+        if (live) return;
+
+        let listeners = waiting.get(url);
+        if (!listeners) waiting.set(url, listeners = new Set());
+        listeners.add(setLive);
+
+        if (!asked.has(url)) {
+            asked.add(url);
+            if (queued.push(url) === 1) setTimeout(refreshQueued);
+        }
+
+        return () => {
+            listeners!.delete(setLive);
+            if (!listeners!.size) waiting.delete(url);
+        };
+    }, [url, live]);
+
+    return live;
+}
 
 function kindOf(attachment: MessageAttachment) {
     const type = attachment.content_type ?? "";
@@ -23,31 +71,39 @@ function kindOf(attachment: MessageAttachment) {
     return null;
 }
 
-function thumbFor(attachment: MessageAttachment) {
-    const url = new URL(attachment.proxy_url);
+function thumbFor(proxyUrl: string) {
+    const url = new URL(proxyUrl);
     url.searchParams.set("width", "32");
     url.searchParams.set("height", "32");
     return url.href;
 }
 
-function attachmentNode(attachment: MessageAttachment, channel: Channel) {
-    const { attachmentDetail, thumbnails, blurNsfw } = settings.store;
-    const isImage = attachment.content_type?.startsWith("image/");
-
-    if (thumbnails && isImage) {
-        const blur = attachment.spoiler || (blurNsfw && channel.nsfw);
-        return <img
-            className={cl("thumb", { "thumb-blurred": blur })}
-            src={thumbFor(attachment)}
-            alt={attachment.filename}
-            loading="lazy"
-        />;
-    }
-
-    if (!attachmentDetail) return isImage ? "sent an image" : "sent an attachment";
+function attachmentText(attachment: MessageAttachment) {
+    if (!settings.store.attachmentDetail) return attachment.content_type?.startsWith("image/") ? "sent an image" : "sent an attachment";
 
     const kind = kindOf(attachment);
     return kind ? `sent ${kind}` : `sent ${attachment.filename}`;
+}
+
+function Thumb({ attachment, blur }: { attachment: MessageAttachment; blur: boolean; }) {
+    const src = useLiveUrl(attachment.proxy_url);
+    if (!src) return <>{attachmentText(attachment)}</>;
+
+    return <img
+        className={cl("thumb", { "thumb-blurred": blur })}
+        src={thumbFor(src)}
+        alt={attachment.filename}
+        loading="lazy"
+    />;
+}
+
+function attachmentNode(attachment: MessageAttachment, channel: Channel) {
+    const { thumbnails, blurNsfw } = settings.store;
+
+    if (thumbnails && attachment.content_type?.startsWith("image/"))
+        return <Thumb attachment={attachment} blur={Boolean(attachment.spoiler || (blurNsfw && channel.nsfw))} />;
+
+    return attachmentText(attachment);
 }
 
 function embedText(message: Message) {
