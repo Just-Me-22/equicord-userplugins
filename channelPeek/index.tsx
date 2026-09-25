@@ -12,18 +12,19 @@ import definePlugin from "@utils/types";
 import { Channel } from "@vencord/discord-types";
 import { ChannelType } from "@vencord/discord-types/enums";
 import {
-    ActiveJoinedThreadsStore, FluxDispatcher, Menu, MessageStore, UserGuildSettingsStore
+    ActiveJoinedThreadsStore, FluxDispatcher, Menu, MessageStore, UserGuildSettingsStore, VoiceStateStore
 } from "@webpack/common";
 
 import { loadActivity, stopActivity } from "./activity";
 import { openBulkEmoji } from "./BulkEmoji";
 import { openCatchUp } from "./CatchUp";
-import { refreshCategories, startCategories, stopCategories } from "./category";
+import { hasSummary, refreshCategories, startCategories, stopCategories } from "./category";
 import { ChannelIcon, openEmojiPicker } from "./ChannelIcon";
+import { describe } from "./describe";
 import { getOverrides, migrateOverrides, resolveEmoji, setOverride } from "./emoji";
 import { refresh as refreshFilter, startFilter, stopFilter } from "./filter";
 import { attachFilterBar, stopFilterBar } from "./FilterBar";
-import { startGateway, stopGateway } from "./gateway";
+import { lastMessageOf, startGateway, stopGateway } from "./gateway";
 import Preview from "./Preview";
 import { destroyQuickReply } from "./QuickReply";
 import { hooks, settings } from "./settings";
@@ -31,6 +32,8 @@ import { refreshAutoCollapse, stopAutoCollapse } from "./sidebar";
 import { stopTicker } from "./ticker";
 
 const logger = new Logger("ChannelPeek");
+
+const LINE = 16;
 
 const TEXTUAL = [ChannelType.GUILD_TEXT, ChannelType.GUILD_ANNOUNCEMENT];
 const VOICE = [ChannelType.GUILD_VOICE, ChannelType.GUILD_STAGE_VOICE];
@@ -149,6 +152,20 @@ function subtitleFor(channel: Channel) {
     return <Preview channel={channel} />;
 }
 
+function previewLines(channel: Channel) {
+    if (!subtitleFor(channel)) return 0;
+
+    if (VOICE.includes(channel.type)) {
+        return Object.keys(VoiceStateStore.getVoiceStatesForChannel(channel.id) ?? {}).length ? 1 : 0;
+    }
+
+    const target = channel.type === ChannelType.GUILD_FORUM ? newestForumPost(channel) : channel;
+    const message = target && lastMessageOf(target);
+    if (!message || !describe(message, target)) return 0;
+
+    return settings.store.previewLines === "2" ? 2 : 1;
+}
+
 function onChannelSelect() {
     attachFilterBar();
     refreshFilter();
@@ -187,6 +204,19 @@ export default definePlugin({
             }
         },
         {
+            find: "voiceChannelsSectionNumber){let",
+            replacement: [
+                {
+                    match: /if\(\(null!=(\i)\.subtitle\|\|(\i)===\1\.id\)&&\((\i)\+=16\)/,
+                    replace: "if($3+=$self.subtitleHeight($1,$2===$1.id)"
+                },
+                {
+                    match: /(getSectionHeight=(\i)=>\{let\{guild:\i,guildChannels:(\i),density:(\i)\}=this\.props.+?)return"compact"===\4\?32:40\}/,
+                    replace: '$1return("compact"===$4?32:40)+$self.summaryHeight($3.getCategoryFromSection($2))}'
+                }
+            ]
+        },
+        {
             find: "UNREAD_IMPORTANT:",
             predicate: () => settings.store.channelIcons,
             replacement: {
@@ -221,6 +251,26 @@ export default definePlugin({
         stopCategories();
         stopTicker();
         destroyQuickReply();
+    },
+
+    subtitleHeight(entry: { subtitle?: unknown; record: Channel; }, selectedVoice: boolean) {
+        if (entry.subtitle != null || selectedVoice) return LINE;
+        try {
+            return previewLines(entry.record) * LINE;
+        } catch (err) {
+            logger.error("preview height failed", err);
+            return 0;
+        }
+    },
+
+    summaryHeight(category: { id?: string; isCollapsed?: boolean; } | undefined) {
+        if (!category?.id || !category.isCollapsed) return 0;
+        try {
+            return hasSummary(category.id) ? LINE : 0;
+        } catch (err) {
+            logger.error("summary height failed", err);
+            return 0;
+        }
     },
 
     getSubtitle(props: { channel: Channel; }) {

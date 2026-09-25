@@ -22,11 +22,11 @@ ${COLLAPSED}{overflow:visible;flex-wrap:wrap}
 ${COLLAPSED}::after{
 flex:0 0 100%;
 overflow:hidden;
-margin-top:1px;
+height:16px;
 color:var(--text-muted);
 font-size:11px;
 font-weight:400;
-line-height:1.35;
+line-height:16px;
 text-transform:none;
 letter-spacing:normal;
 white-space:nowrap;
@@ -69,6 +69,11 @@ function newestInCategory(guildId: string, categoryId: string) {
     }
 
     return best;
+}
+
+export function hasSummary(categoryId: string) {
+    const guildId = SelectedGuildStore.getGuildId();
+    return Boolean(sheet && guildId && settings.store.categorySummary && newestInCategory(guildId, categoryId));
 }
 
 function quote(text: string) {
