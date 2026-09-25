@@ -8,7 +8,6 @@ import { WindowStore } from "@webpack/common";
 
 import { settings } from "./settings";
 
-const FROZEN = "vc-aat-frozen";
 const OFFSCREEN = "vc-aat-offscreen";
 const SCROLL_SETTLE = 150;
 const TYPING_SETTLE = 700;
@@ -157,8 +156,6 @@ function apply() {
         }
     }
 
-    const allowed = on();
-    document.body.classList.toggle(FROZEN, !allowed);
     document.body.classList.toggle(OFFSCREEN, settings.store.pauseOffscreen);
 
     syncInput();
@@ -310,6 +307,5 @@ export function stopGate() {
     scrolling = typing = false;
     wasAwake = undefined;
 
-    document.body.classList.remove(FROZEN);
     document.body.classList.remove(OFFSCREEN);
 }
