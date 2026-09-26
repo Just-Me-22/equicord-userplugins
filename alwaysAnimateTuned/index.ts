@@ -22,6 +22,10 @@ export default definePlugin({
 
     on,
 
+    decorationAnimates(props: { vcHover?: boolean; }) {
+        return props.vcHover ?? on();
+    },
+
     start() {
         startGate();
         startPace();
@@ -33,6 +37,29 @@ export default definePlugin({
     },
 
     patches: [
+        {
+            find: 'parentComponent:"AvatarDecorationModal"',
+            predicate: () => settings.store.icons,
+            replacement: {
+                match: /onlyAnimateOnHoverOrFocus:!(\i)\}/,
+                replace: "onlyAnimateOnHoverOrFocus:!$1,vcHover:$1}"
+            }
+        },
+        {
+            find: "isAvatarDecorationAnimating:",
+            predicate: () => settings.store.icons,
+            replacement: {
+                match: /(onlyAnimateOnHoverOrFocus:\i=!1\}=(\i),.{0,1500}?)canAnimate:\i,size:(\i)\}\),\[/,
+                replace: '$1["canAnimate"]:$self.decorationAnimates($2),size:$3}),[$2.vcHover,'
+            }
+        },
+        {
+            find: "/media/v1/collectibles-shop/",
+            replacement: {
+                match: /\$\{(\i)\?`\$\{\1\}\/`:""\}\$\{(\i)\}`/,
+                replace: '${$1?`${$1}/`:""}${$2}${$1&&"static"===$2?"?format=webp":""}`'
+            }
+        },
         {
             find: "canAnimate:",
             predicate: () => settings.store.icons,
