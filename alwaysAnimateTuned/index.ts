@@ -91,20 +91,6 @@ export default definePlugin({
             }
         },
         {
-            find: "boldFontOpacity:.9",
-            predicate: () => settings.store.nameStyles,
-            replacement: [
-                {
-                    match: /\?(\i\.\i)\.ANIMATED:\1\.PLAIN(?=,loop:)/,
-                    replace: "?$1.ANIMATED:($self.on()?$1.ANIMATED:$1.PLAIN)"
-                },
-                {
-                    match: /,loop:\i(?=,boldFontOpacity:\.9)/,
-                    replace: ",loop:$self.on()"
-                }
-            ]
-        },
-        {
             find: "animateGradient:",
             predicate: () => settings.store.roleGradients,
             all: true,
@@ -112,22 +98,6 @@ export default definePlugin({
             replacement: {
                 match: /animateGradient:(.+?)([,}].*?\))/g,
                 replace: sweep("animateGradient")
-            }
-        },
-        {
-            find: "dotCycle:2.8",
-            predicate: () => settings.store.stillTypingDots,
-            replacement: {
-                match: /\{focused:(\i)\}=\(0,\i\.\i\)\(\)/,
-                replace: "$1=!1"
-            }
-        },
-        {
-            find: 'width:"100%",height:"100%",children:[0,1,2].map',
-            predicate: () => settings.store.stillTypingDots,
-            replacement: {
-                match: /\{focused:(\i)\}=\(0,\i\.\i\)\(\)/,
-                replace: "$1=!1"
             }
         },
         {
