@@ -19,7 +19,7 @@ function SweepReport() {
         {names.map(name => {
             const t = tallies[name];
             return <Text variant="text-sm/normal" key={name}>
-                {`${name}: ${t.rewritten} rewritten of ${t.seen} — skipped ${t.destructuring} destructuring, ${t.classMap} class map, ${t.literal} literal, ${t.alreadyOff} already off`}
+                {`${name}: ${t.rewritten} rewritten of ${t.seen}, skipped ${t.destructuring} destructuring, ${t.classMap} class map, ${t.literal} literal, ${t.alreadyOff} already off`}
             </Text>;
         })}
     </>;
@@ -111,6 +111,11 @@ export const settings = definePluginSettings({
         type: OptionType.BOOLEAN,
         description: "Only play the video surface under the cursor. Animated images are not affected.",
         default: false
+    },
+    fullRate: {
+        type: OptionType.BOOLEAN,
+        description: "Keep the full frame rate while two or more videos play, instead of Chromium slowing the whole window to their speed.",
+        default: true
     },
     refreshStatic: {
         type: OptionType.BOOLEAN,

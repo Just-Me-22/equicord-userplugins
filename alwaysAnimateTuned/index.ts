@@ -9,6 +9,7 @@ import "./style.css";
 import definePlugin from "@utils/types";
 
 import { NAMEPLATE, on, startGate, stopGate } from "./gate";
+import { startPace, stopPace } from "./pace";
 import { settings } from "./settings";
 import { sweep } from "./sweeps";
 
@@ -23,10 +24,12 @@ export default definePlugin({
 
     start() {
         startGate();
+        startPace();
     },
 
     stop() {
         stopGate();
+        stopPace();
     },
 
     patches: [

@@ -6,6 +6,7 @@
 
 import { ExpressionPickerStore, WindowStore } from "@webpack/common";
 
+import { PACE } from "./pace";
 import { settings } from "./settings";
 
 const OFFSCREEN = "vc-aat-offscreen";
@@ -85,7 +86,7 @@ function under(video: HTMLVideoElement) {
 }
 
 function videos() {
-    return [...live].filter(video => !video.controls && video.duration !== Infinity);
+    return [...live].filter(video => !video.controls && video.duration !== Infinity && !video.classList.contains(PACE));
 }
 
 function reobserve(all: HTMLVideoElement[]) {

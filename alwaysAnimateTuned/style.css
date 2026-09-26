@@ -5,3 +5,14 @@ body.vc-aat-offscreen [class*="profileEffect"] video,
 body.vc-aat-offscreen [class*="banner"] video {
     content-visibility: auto;
 }
+
+.vc-aat-pace {
+    position: fixed;
+    top: 0;
+    left: 0;
+    z-index: 2147483647;
+    width: 1px;
+    height: 1px;
+    opacity: 0.01;
+    pointer-events: none;
+}
