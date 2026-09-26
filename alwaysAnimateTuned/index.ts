@@ -8,6 +8,7 @@ import "./style.css";
 
 import definePlugin from "@utils/types";
 
+import { EffectTile } from "./effects";
 import { NAMEPLATE, on, startGate, stopGate } from "./gate";
 import { startPace, stopPace } from "./pace";
 import { usePickerSettled } from "./picker";
@@ -24,6 +25,7 @@ export default definePlugin({
     on,
 
     usePickerSettled,
+    EffectTile,
 
     decorationAnimates(props: { vcAnimate?: boolean; }) {
         return on() && (props.vcAnimate ?? true);
@@ -46,6 +48,14 @@ export default definePlugin({
             replacement: {
                 match: /onlyAnimateOnHoverOrFocus:!(\i)\}/,
                 replace: "onlyAnimateOnHoverOrFocus:!$1,vcAnimate:$self.usePickerSettled()||$1}"
+            }
+        },
+        {
+            find: 'parentComponent:"ProfileEffectModal"',
+            predicate: () => settings.store.icons,
+            replacement: {
+                match: /(let\{skuId:(\i),innerRef.{0,400}?)\(0,(\i)\.jsx\)\("img",(\{className:\i\.\i,src:\i,alt:\i)\}\)/,
+                replace: "$1(0,$3.jsx)($self.EffectTile,$4,skuId:$2})"
             }
         },
         {
