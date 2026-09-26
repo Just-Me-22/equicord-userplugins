@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
-import definePlugin from "@utils/types";
+import definePlugin, { StartAt } from "@utils/types";
 
 const HOVER = "vc-region-hover";
 const RING = "vc-region-ring";
@@ -19,11 +19,45 @@ const REGIONS = [
 ].join(",");
 
 const MUSIC = "vc-spotify-shown";
+const DROP_HAS = /:has\([^()]*(?:data-app-right-panel|\.gameOption_)[^()]*\)/g;
+const AFTER_ANY = / \* \+ (?:\*|(?=::?(?:before|after)))/g;
 
 let ring: HTMLDivElement | undefined;
 let panels: Element | null = null;
 let findPanels: ReturnType<typeof setInterval> | undefined;
 const music = new MutationObserver(syncMusic);
+let swapped: { rule: CSSStyleRule; original: string; }[] = [];
+const links = new MutationObserver(records => {
+    for (const { addedNodes } of records)
+        for (const node of addedNodes)
+            if (node instanceof HTMLLinkElement) watchSheet(node);
+});
+
+function swapRules(list: CSSRuleList) {
+    for (const rule of list) {
+        if (rule instanceof CSSStyleRule) {
+            const next = rule.selectorText.replace(DROP_HAS, "").replace(AFTER_ANY, " :not(:first-child)");
+            if (next === rule.selectorText) continue;
+            swapped.push({ rule, original: rule.selectorText });
+            rule.selectorText = next;
+        } else if (rule instanceof CSSGroupingRule) swapRules(rule.cssRules);
+    }
+}
+
+function watchSheet(link: HTMLLinkElement) {
+    const swap = () => {
+        try {
+            if (link.sheet) swapRules(link.sheet.cssRules);
+        } catch { }
+    };
+    if (link.sheet) swap();
+    else link.addEventListener("load", swap, { once: true });
+}
+
+function restoreRules() {
+    for (const { rule, original } of swapped) rule.selectorText = original;
+    swapped = [];
+}
 
 function syncMusic() {
     document.documentElement.classList.toggle(MUSIC, document.getElementById("vc-spotify-player") !== null);
@@ -53,8 +87,9 @@ function onOut(e: PointerEvent) {
 
 export default definePlugin({
     name: "NoFullRestyle",
-    description: "Stops three things that make Discord re-style the whole app: the screen reader announcer being moved to the start of the page when a modal opens, the focus class flipping on the page root when the window gains or loses focus, and the mouse/keyboard class flipping when you switch between typing and clicking. Loading spinners keep spinning while Discord is in the background, and keyboard focus outlines no longer show. Also marks the app while you hover the server list, channel list or chat, so a theme can light it up without a :has() rule. The class goes on an empty .vc-region-ring overlay inside it. Puts .vc-spotify-shown on the page root while the MusicControls Spotify player is showing, for the same reason.",
+    description: "Stops three things that make Discord re-style the whole app: the screen reader announcer being moved to the start of the page when a modal opens, the focus class flipping on the page root when the window gains or loses focus, and the mouse/keyboard class flipping when you switch between typing and clicking. Loading spinners keep spinning while Discord is in the background, and keyboard focus outlines no longer show. Also marks the app while you hover the server list, channel list or chat, so a theme can light it up without a :has() rule. The class goes on an empty .vc-region-ring overlay inside it. Puts .vc-spotify-shown on the page root while the MusicControls Spotify player is showing, for the same reason. Also rewrites Discord's `> * + *` rules as `> :not(:first-child)` and drops the :has() from its side-panel and game search rules, because they re-styled a whole list or the whole app when a modal or panel opened.",
     authors: [{ name: "heart_menace", id: 281162701303185408n }],
+    startAt: StartAt.DOMContentLoaded,
 
     start() {
         ring = document.createElement("div");
@@ -65,6 +100,9 @@ export default definePlugin({
 
         watchPanels();
         findPanels = setInterval(watchPanels, 1000);
+
+        document.querySelectorAll<HTMLLinkElement>('link[rel="stylesheet"]').forEach(watchSheet);
+        links.observe(document.head, { childList: true });
     },
 
     stop() {
@@ -76,6 +114,8 @@ export default definePlugin({
         music.disconnect();
         panels = null;
         document.documentElement.classList.remove(MUSIC);
+        links.disconnect();
+        restoreRules();
     },
 
     patches: [
