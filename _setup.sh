@@ -12,6 +12,7 @@ profileSets            https://github.com/Just-Me-22/ProfileSets.git
 serverSafety           https://github.com/Just-Me-22/ServerSafety.git
 sidebarResizeLimits    https://github.com/Just-Me-22/SidebarResizeLimits.git
 userPanelServerProfile https://github.com/Just-Me-22/UserPanelServerProfile.git
+workbench              https://github.com/Just-Me-22/Workbench.git
 "
 
 cd "$(dirname "$0")"
