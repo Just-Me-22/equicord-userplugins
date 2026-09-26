@@ -7,6 +7,7 @@
 import "./style.css";
 
 import { NavContextMenuPatchCallback } from "@api/ContextMenu";
+import { SettingsStore } from "@api/Settings";
 import { Logger } from "@utils/Logger";
 import definePlugin from "@utils/types";
 import { Channel } from "@vencord/discord-types";
@@ -27,7 +28,7 @@ import { attachFilterBar, stopFilterBar } from "./FilterBar";
 import { lastMessageOf, startGateway, stopGateway } from "./gateway";
 import Preview from "./Preview";
 import { destroyQuickReply } from "./QuickReply";
-import { hooks, settings } from "./settings";
+import { forgetRowSettings, hooks, rowSettings, settings } from "./settings";
 import { refreshAutoCollapse, stopAutoCollapse } from "./sidebar";
 import { stopTicker } from "./ticker";
 
@@ -69,9 +70,10 @@ function newestForumPost(channel: Channel) {
 }
 
 function previewable(channel: Channel) {
-    if (settings.store.threads && channel.isThread?.()) return true;
-    if (settings.store.forums && channel.type === ChannelType.GUILD_FORUM) return true;
-    if (settings.store.voiceOccupants && VOICE.includes(channel.type)) return true;
+    const { threads, forums, voiceOccupants } = rowSettings();
+    if (threads && channel.isThread?.()) return true;
+    if (forums && channel.type === ChannelType.GUILD_FORUM) return true;
+    if (voiceOccupants && VOICE.includes(channel.type)) return true;
     return TEXTUAL.includes(channel.type);
 }
 
@@ -132,38 +134,41 @@ const guildContext: NavContextMenuPatchCallback = (children, { guild }: { guild:
     );
 };
 
-function subtitleFor(channel: Channel) {
+function previewTarget(channel: Channel) {
     if (!channel || !previewable(channel)) return undefined;
 
-    if (listed(settings.store.mutedPreviews as string[], channel.id)) return undefined;
-    if (channel.guild_id && listed(settings.store.mutedGuilds as string[], channel.guild_id)) return undefined;
+    const { mutedPreviews, mutedGuilds, mutedChannels } = rowSettings();
+    if (mutedPreviews.has(channel.id)) return undefined;
+    if (channel.guild_id && mutedGuilds.has(channel.guild_id)) return undefined;
 
-    if (settings.store.mutedChannels === "hide" && UserGuildSettingsStore.isChannelMuted(channel.guild_id, channel.id)) return undefined;
+    if (mutedChannels === "hide" && UserGuildSettingsStore.isChannelMuted(channel.guild_id, channel.id)) return undefined;
 
-    if (channel.type === ChannelType.GUILD_FORUM) {
-        const post = newestForumPost(channel);
-        return post ? <Preview channel={post} /> : undefined;
-    }
+    if (channel.type === ChannelType.GUILD_FORUM) return newestForumPost(channel);
 
-    if (VOICE.includes(channel.type)) return <Preview channel={channel} />;
+    if (VOICE.includes(channel.type)) return channel;
 
     if (!channel.lastMessageId && !MessageStore.getLastMessage(channel.id)) return undefined;
 
-    return <Preview channel={channel} />;
+    return channel;
+}
+
+function subtitleFor(channel: Channel) {
+    const target = previewTarget(channel);
+    return target && <Preview channel={target} />;
 }
 
 function previewLines(channel: Channel) {
-    if (!subtitleFor(channel)) return 0;
+    const target = previewTarget(channel);
+    if (!target) return 0;
 
     if (VOICE.includes(channel.type)) {
         return Object.keys(VoiceStateStore.getVoiceStatesForChannel(channel.id) ?? {}).length ? 1 : 0;
     }
 
-    const target = channel.type === ChannelType.GUILD_FORUM ? newestForumPost(channel) : channel;
-    const message = target && lastMessageOf(target);
+    const message = lastMessageOf(target);
     if (!message || !describe(message, target)) return 0;
 
-    return settings.store.previewLines === "2" ? 2 : 1;
+    return rowSettings().previewLines === "2" ? 2 : 1;
 }
 
 function onChannelSelect() {
@@ -227,6 +232,7 @@ export default definePlugin({
     ],
 
     start() {
+        SettingsStore.addPrefixChangeListener("plugins.ChannelPeek", forgetRowSettings);
         migrateOverrides();
         startGateway();
         hooks.filterChanged = syncFilter;
@@ -239,6 +245,8 @@ export default definePlugin({
     },
 
     stop() {
+        SettingsStore.removePrefixChangeListener("plugins.ChannelPeek", forgetRowSettings);
+        forgetRowSettings();
         stopGateway();
         hooks.filterChanged = () => { };
         FluxDispatcher.unsubscribe("CHANNEL_SELECT", onChannelSelect);

@@ -259,3 +259,26 @@ export const settings = definePluginSettings({
         default: [] as string[]
     }
 });
+
+function readRowSettings() {
+    const { threads, forums, voiceOccupants, mutedChannels, previewLines, mutedPreviews, mutedGuilds } = settings.store;
+    return {
+        threads,
+        forums,
+        voiceOccupants,
+        mutedChannels,
+        previewLines,
+        mutedPreviews: new Set(mutedPreviews as string[]),
+        mutedGuilds: new Set(mutedGuilds as string[])
+    };
+}
+
+let rowSettingsCache: ReturnType<typeof readRowSettings> | undefined;
+
+export function rowSettings() {
+    return rowSettingsCache ??= readRowSettings();
+}
+
+export function forgetRowSettings() {
+    rowSettingsCache = undefined;
+}

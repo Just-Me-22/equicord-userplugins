@@ -8,7 +8,7 @@ import { classNameFactory } from "@utils/css";
 import { Channel, Message, MessageAttachment } from "@vencord/discord-types";
 import { Constants, Parser, RestAPI, useEffect, useState } from "@webpack/common";
 
-import { settings } from "./settings";
+import { rowSettings, settings } from "./settings";
 
 const cl = classNameFactory("vc-channel-peek-");
 
@@ -140,7 +140,8 @@ function bodyOf(message: Message, channel: Channel): React.ReactNode {
 }
 
 interface CacheEntry {
-    key: string;
+    edited: number;
+    settings: ReturnType<typeof rowSettings>;
     node: React.ReactNode;
 }
 
@@ -148,15 +149,15 @@ const cache = new Map<string, CacheEntry>();
 const CACHE_LIMIT = 600;
 
 export function describe(message: Message, channel: Channel): React.ReactNode {
-    const { attachmentDetail, thumbnails, linkStyle, blurNsfw } = settings.store;
-    const key = `${message.editedTimestamp ?? ""}|${attachmentDetail}|${thumbnails}|${linkStyle}|${blurNsfw}`;
+    const current = rowSettings();
+    const edited = +(message.editedTimestamp ?? 0);
 
     const hit = cache.get(message.id);
-    if (hit?.key === key) return hit.node;
+    if (hit?.settings === current && hit.edited === edited) return hit.node;
 
     const node = bodyOf(message, channel);
     if (cache.size >= CACHE_LIMIT) cache.clear();
-    cache.set(message.id, { key, node });
+    cache.set(message.id, { edited, settings: current, node });
     return node;
 }
 
