@@ -10,6 +10,7 @@ import definePlugin from "@utils/types";
 
 import { NAMEPLATE, on, startGate, stopGate } from "./gate";
 import { startPace, stopPace } from "./pace";
+import { usePickerSettled } from "./picker";
 import { settings } from "./settings";
 import { sweep } from "./sweeps";
 
@@ -22,8 +23,10 @@ export default definePlugin({
 
     on,
 
-    decorationAnimates(props: { vcHover?: boolean; }) {
-        return props.vcHover ?? on();
+    usePickerSettled,
+
+    decorationAnimates(props: { vcAnimate?: boolean; }) {
+        return on() && (props.vcAnimate ?? true);
     },
 
     start() {
@@ -42,7 +45,7 @@ export default definePlugin({
             predicate: () => settings.store.icons,
             replacement: {
                 match: /onlyAnimateOnHoverOrFocus:!(\i)\}/,
-                replace: "onlyAnimateOnHoverOrFocus:!$1,vcHover:$1}"
+                replace: "onlyAnimateOnHoverOrFocus:!$1,vcAnimate:$self.usePickerSettled()||$1}"
             }
         },
         {
@@ -50,7 +53,7 @@ export default definePlugin({
             predicate: () => settings.store.icons,
             replacement: {
                 match: /(onlyAnimateOnHoverOrFocus:\i=!1\}=(\i),.{0,1500}?)canAnimate:\i,size:(\i)\}\),\[/,
-                replace: '$1["canAnimate"]:$self.decorationAnimates($2),size:$3}),[$2.vcHover,'
+                replace: '$1["canAnimate"]:$self.decorationAnimates($2),size:$3}),[$2.vcAnimate,'
             }
         },
         {
