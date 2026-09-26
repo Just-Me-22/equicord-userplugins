@@ -38,6 +38,7 @@ let observer: MutationObserver | undefined;
 let observing: HTMLElement | undefined;
 let frame = 0;
 let last = "";
+const newest = new Map<string, ReturnType<typeof newestInCategory>>();
 
 function childrenOf(guildId: string, categoryId: string) {
     const entries = GuildChannelStore.getChannels(guildId)?.SELECTABLE ?? [];
@@ -71,9 +72,14 @@ function newestInCategory(guildId: string, categoryId: string) {
     return best;
 }
 
+function cachedNewest(guildId: string, categoryId: string) {
+    if (!newest.has(categoryId)) newest.set(categoryId, newestInCategory(guildId, categoryId));
+    return newest.get(categoryId);
+}
+
 export function hasSummary(categoryId: string) {
     const guildId = SelectedGuildStore.getGuildId();
-    return Boolean(sheet && guildId && settings.store.categorySummary && newestInCategory(guildId, categoryId));
+    return Boolean(sheet && guildId && settings.store.categorySummary && cachedNewest(guildId, categoryId));
 }
 
 function quote(text: string) {
@@ -94,11 +100,11 @@ function build() {
 
     const rules: string[] = [];
     for (const categoryId of collapsedIds()) {
-        const newest = newestInCategory(guildId, categoryId);
-        if (!newest) continue;
+        const summary = cachedNewest(guildId, categoryId);
+        if (!summary) continue;
 
         rules.push(
-            `[data-list-item-id="channels___${categoryId}"][aria-expanded="false"]::after{content:"#${quote(newest.channel.name)}: ${quote(newest.text)}"}`
+            `[data-list-item-id="channels___${categoryId}"][aria-expanded="false"]::after{content:"#${quote(summary.channel.name)}: ${quote(summary.text)}"}`
         );
     }
 
@@ -132,6 +138,7 @@ function apply() {
 }
 
 export function refreshCategories() {
+    newest.clear();
     if (frame || !sheet) return;
     frame = requestAnimationFrame(apply);
 }
@@ -157,6 +164,7 @@ export function stopCategories() {
 
     frame = 0;
     last = "";
+    newest.clear();
     sheet.remove();
     sheet = undefined;
 }
