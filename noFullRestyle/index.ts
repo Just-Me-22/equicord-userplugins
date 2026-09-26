@@ -18,7 +18,24 @@ const REGIONS = [
     'main[class*="chatContent"]'
 ].join(",");
 
+const MUSIC = "vc-spotify-shown";
+
 let ring: HTMLDivElement | undefined;
+let panels: Element | null = null;
+let findPanels: ReturnType<typeof setInterval> | undefined;
+const music = new MutationObserver(syncMusic);
+
+function syncMusic() {
+    document.documentElement.classList.toggle(MUSIC, document.getElementById("vc-spotify-player") !== null);
+}
+
+function watchPanels() {
+    if (panels?.isConnected) return;
+    panels = document.querySelector('section[class*="panels_"]');
+    music.disconnect();
+    if (panels) music.observe(panels, { childList: true });
+    syncMusic();
+}
 
 function light(base: Element | null) {
     if (base && ring!.parentElement !== base) base.append(ring!);
@@ -36,7 +53,7 @@ function onOut(e: PointerEvent) {
 
 export default definePlugin({
     name: "NoFullRestyle",
-    description: "Stops three things that make Discord re-style the whole app: the screen reader announcer being moved to the start of the page when a modal opens, the focus class flipping on the page root when the window gains or loses focus, and the mouse/keyboard class flipping when you switch between typing and clicking. Loading spinners keep spinning while Discord is in the background, and keyboard focus outlines no longer show. Also marks the app while you hover the server list, channel list or chat, so a theme can light it up without a :has() rule. The class goes on an empty .vc-region-ring overlay inside it.",
+    description: "Stops three things that make Discord re-style the whole app: the screen reader announcer being moved to the start of the page when a modal opens, the focus class flipping on the page root when the window gains or loses focus, and the mouse/keyboard class flipping when you switch between typing and clicking. Loading spinners keep spinning while Discord is in the background, and keyboard focus outlines no longer show. Also marks the app while you hover the server list, channel list or chat, so a theme can light it up without a :has() rule. The class goes on an empty .vc-region-ring overlay inside it. Puts .vc-spotify-shown on the page root while the MusicControls Spotify player is showing, for the same reason.",
     authors: [{ name: "heart_menace", id: 281162701303185408n }],
 
     start() {
@@ -45,6 +62,9 @@ export default definePlugin({
         ring.style.cssText = "position:absolute;inset:0;pointer-events:none";
         document.addEventListener("pointerover", onOver, { passive: true });
         document.addEventListener("pointerout", onOut, { passive: true });
+
+        watchPanels();
+        findPanels = setInterval(watchPanels, 1000);
     },
 
     stop() {
@@ -52,6 +72,10 @@ export default definePlugin({
         document.removeEventListener("pointerout", onOut);
         ring?.remove();
         ring = undefined;
+        clearInterval(findPanels);
+        music.disconnect();
+        panels = null;
+        document.documentElement.classList.remove(MUSIC);
     },
 
     patches: [
