@@ -1074,7 +1074,7 @@ test("builds the timeline and slow buckets", () => {
     assert.deepEqual(summary.timeline, [60, 0, 10]);
     assert.deepEqual(summary.slowBuckets, [0]);
     assert.equal(summary.timeline.reduce((sum, ms) => sum + ms, 0), summary.busyMs);
-    assert.equal(summary.ownerBuckets["freezeLog"][0], 20);
+    assert.equal(summary.ownerBuckets.freezeLog[0], 20);
 });
 
 test("gives each restyle its cause", () => {
@@ -1637,6 +1637,7 @@ const FOLDER = /^\d{4}-\d\d-\d\d_\d\d-\d\d-\d\d$/;
 const KEEP = 10;
 const MANUAL_LIMIT = 60_000;
 const STARTUP_LENGTH = 30_000;
+const STOP_LIMIT = 30_000;
 const PATCHED_MODULES = 20;
 
 interface Session {
@@ -1685,8 +1686,8 @@ async function begin(contents: WebContents, limit: number) {
         throw err;
     }
 
-    await contents.executeJavaScript('performance.mark("workbench-start")').catch(() => { });
     session = { recorder, collector, folder, startedAt, contents, timer: setTimeout(() => void finish(), limit) };
+    void contents.executeJavaScript('performance.mark("workbench-start")').catch(() => { });
     return currentState();
 }
 
@@ -1729,14 +1730,17 @@ async function finish() {
     clearTimeout(current.timer);
 
     let summary: Summary;
+    let limit: ReturnType<typeof setTimeout> | undefined;
     try {
-        await current.recorder.stop();
+        const timeout = new Promise<never>((_, reject) => limit = setTimeout(() => reject(new Error("The trace did not finish within 30s")), STOP_LIMIT));
+        await Promise.race([current.recorder.stop(), timeout]);
         const flux: FluxCapture | null = await current.contents.executeJavaScript("Vencord.Plugins.plugins.Workbench?.takeFlux?.() ?? null").catch(() => null);
         summary = buildSummary(current.collector, { map: loadMap(), flux, startedAt: current.startedAt });
         await annotatePatchedBy(current, summary).catch(() => { });
     } catch (err) {
         summary = emptySummary(current.startedAt, String(err));
     } finally {
+        clearTimeout(limit);
         current.recorder.detach();
     }
 
@@ -2497,10 +2501,19 @@ import { Native, onRecorded, refresh, toggleRecording, update, view } from "./st
 let root: ReturnType<typeof createRoot> | null = null;
 let container: HTMLDivElement | null = null;
 
+function mount() {
+    if (root) return;
+    container = document.createElement("div");
+    document.body.appendChild(container);
+    root = createRoot(container);
+    root.render(<Drawer />);
+}
+
 function onKey(event: KeyboardEvent) {
     if (event.repeat || event.ctrlKey || event.altKey || event.shiftKey || event.metaKey) return;
     if (event.code === "F9") {
         event.preventDefault();
+        mount();
         update({ open: !view.open });
         if (view.open) void refresh();
     } else if (event.code === "F10") {
@@ -2519,11 +2532,6 @@ export default definePlugin({
 
     async start() {
         window.addEventListener("keydown", onKey, true);
-        container = document.createElement("div");
-        document.body.appendChild(container);
-        root = createRoot(container);
-        root.render(<Drawer />);
-
         const state = await Native.state();
         update({ state });
         if (state.recording) startFlux();
