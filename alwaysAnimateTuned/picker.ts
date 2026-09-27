@@ -6,7 +6,7 @@
 
 import { React } from "@webpack/common";
 
-const SETTLE = 350;
+const SETTLE = 1000;
 
 const listeners = new Set<() => void>();
 let settled = true;

@@ -54,8 +54,8 @@ export default definePlugin({
             find: 'parentComponent:"ProfileEffectModal"',
             predicate: () => settings.store.icons,
             replacement: {
-                match: /(let\{skuId:(\i),innerRef.{0,400}?)\(0,(\i)\.jsx\)\("img",(\{className:\i\.\i,src:\i,alt:\i)\}\)/,
-                replace: "$1(0,$3.jsx)($self.EffectTile,$4,skuId:$2})"
+                match: /(let\{skuId:(\i),innerRef:(\i).{0,200}?(\i)=\i\.useRef\(null\).{0,300}?)\(0,(\i)\.jsx\)\("img",(\{className:\i\.\i,src:\i,alt:\i)\}\)/,
+                replace: "$1(0,$5.jsx)($self.EffectTile,$6,skuId:$2,tile:$3??$4})"
             }
         },
         {

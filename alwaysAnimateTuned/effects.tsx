@@ -5,23 +5,29 @@
  */
 
 import ErrorBoundary from "@components/ErrorBoundary";
-import { findComponentByCodeLazy } from "@webpack";
+import { findByCodeLazy, findComponentByCodeLazy } from "@webpack";
 import { useEffect, useRef, useState } from "@webpack/common";
+import type { RefObject } from "react";
 
 import { on } from "./gate";
 import { usePickerSettled } from "./picker";
 
 const ProfileEffect = findComponentByCodeLazy("useOpacityOnHover:e.useOpacityOnHover");
+const useHoverOrFocus: (ref: RefObject<HTMLElement | null>) => { isHoveringOrFocusing: boolean; } =
+    findByCodeLazy("isFocusing:", "isHoveringOrFocusing:", '"focusin"');
 
 interface EffectTileProps {
     skuId: string;
+    tile: RefObject<HTMLElement | null>;
     className: string;
     src: string;
     alt: string;
 }
 
-export function EffectTile({ skuId, className, src, alt }: EffectTileProps) {
-    const animate = usePickerSettled() && on();
+export function EffectTile({ skuId, tile, className, src, alt }: EffectTileProps) {
+    const { isHoveringOrFocusing } = useHoverOrFocus(tile);
+    const settled = usePickerSettled();
+    const animate = isHoveringOrFocusing && settled && on();
     const [ready, setReady] = useState(false);
     const player = useRef<HTMLDivElement>(null);
 
