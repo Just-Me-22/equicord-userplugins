@@ -5,7 +5,6 @@
  */
 
 import { classNameFactory } from "@utils/css";
-import { classes } from "@utils/misc";
 import { Channel } from "@vencord/discord-types";
 import {
     Button, ChannelStore, GuildStore, Modal, NavigationRouter, openModal, ReadStateStore,
@@ -53,6 +52,16 @@ function unreadRows(): Row[] {
         (b.mentions > 0 ? 1 : 0) - (a.mentions > 0 ? 1 : 0) || b.at - a.at);
 }
 
+function byServer(rows: Row[]) {
+    const servers = new Map<string, Row[]>();
+    for (const row of rows) {
+        const list = servers.get(row.channel.guild_id);
+        if (list) list.push(row);
+        else servers.set(row.channel.guild_id, [row]);
+    }
+    return [...servers];
+}
+
 function CatchUpModal(props: any) {
     const [rows, setRows] = useState(unreadRows);
 
@@ -75,24 +84,23 @@ function CatchUpModal(props: any) {
 
         <div className={cl("catchup-list")}>
             {rows.length === 0 && <Text variant="text-sm/normal">Nothing unread.</Text>}
-            {rows.map(row => <div className={cl("catchup-row")} key={row.channel.id}>
-                <button
-                    className={cl("catchup-open")}
-                    onClick={() => {
-                        props.onClose();
-                        NavigationRouter.transitionTo(`/channels/${row.channel.guild_id}/${row.channel.id}`);
-                    }}
-                >
-                    <span className={cl("catchup-where")}>
-                        <span className={cl("catchup-guild")}>{row.guild}</span>
-                        <span className={classes(cl("catchup-channel"), row.mentions > 0 ? cl("catchup-mention") : undefined)}>
-                            #{row.channel.name}
+            {byServer(rows).map(([guildId, list]) => <section className={cl("catchup-server")} key={guildId}>
+                <Text variant="text-xs/semibold" color="text-muted" className={cl("catchup-server-name")}>{list[0].guild}</Text>
+                {list.map(row => <div className={cl("catchup-row")} key={row.channel.id}>
+                    <button
+                        className={cl("catchup-open")}
+                        onClick={() => {
+                            props.onClose();
+                            NavigationRouter.transitionTo(`/channels/${row.channel.guild_id}/${row.channel.id}`);
+                        }}
+                    >
+                        <span className={cl("catchup-where")}>
+                            <span className={cl("catchup-channel")}>#{row.channel.name}</span>
+                            {row.mentions > 0 && <span className={cl("count", "count-mention")}>{row.mentions}</span>}
+                            {row.at > 0 && <span className={cl("age")}>{ageOf(row.at)}</span>}
                         </span>
-                        {row.mentions > 0 && <span className={cl("count")}>{row.mentions}</span>}
-                        {row.at > 0 && <span className={cl("age")}>{ageOf(row.at)}</span>}
-                    </span>
-                    <span className={cl("catchup-text")}>{row.text}</span>
-                </button>
+                        <span className={cl("catchup-text")}>{row.text}</span>
+                    </button>
                 <button
                     className={cl("catchup-ack")}
                     aria-label="Mark as read"
@@ -101,11 +109,12 @@ function CatchUpModal(props: any) {
                         drop(row.channel.id);
                     }}
                 >
-                    <svg width={14} height={14} viewBox="0 0 24 24">
-                        <path fill="currentColor" d="M9 16.2 4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4L9 16.2Z" />
-                    </svg>
-                </button>
-            </div>)}
+                        <svg width={14} height={14} viewBox="0 0 24 24">
+                            <path fill="currentColor" d="M9 16.2 4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4L9 16.2Z" />
+                        </svg>
+                    </button>
+                </div>)}
+            </section>)}
         </div>
     </Modal>;
 }

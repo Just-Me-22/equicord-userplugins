@@ -4,6 +4,9 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
+import { Message } from "@vencord/discord-types";
+import { RelationshipStore, UserStore } from "@webpack/common";
+
 import { settings } from "./settings";
 
 const MINUTE = 60_000;
@@ -41,9 +44,9 @@ function compile(term: string) {
     return new RegExp(`(?<![\\p{L}\\p{N}])${escaped}(?![\\p{L}\\p{N}])`, "iu");
 }
 
-export function matchesKeyword(text: string) {
+function keywordPatterns() {
     const { keywords } = settings.store;
-    if (!keywords) return false;
+    if (!keywords) return [];
 
     if (keywords !== keywordSource) {
         keywordSource = keywords;
@@ -55,5 +58,48 @@ export function matchesKeyword(text: string) {
             .filter((pattern): pattern is RegExp => Boolean(pattern));
     }
 
-    return patterns.some(pattern => pattern.test(text));
+    return patterns;
+}
+
+export function matchesKeyword(text: string) {
+    return keywordPatterns().some(pattern => pattern.test(text));
+}
+
+const KEYWORD_HIGHLIGHT = "vc-channel-peek-keyword";
+const keywordRanges = new Highlight();
+
+export function startKeywordHighlight() {
+    CSS.highlights.set(KEYWORD_HIGHLIGHT, keywordRanges);
+}
+
+export function stopKeywordHighlight() {
+    CSS.highlights.delete(KEYWORD_HIGHLIGHT);
+    keywordRanges.clear();
+}
+
+export function markKeywords(root: HTMLElement) {
+    const ranges: Range[] = [];
+    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+
+    for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+        const value = node.nodeValue ?? "";
+        for (const pattern of keywordPatterns()) {
+            const found = pattern.exec(value);
+            if (!found?.[0]) continue;
+
+            const range = new Range();
+            range.setStart(node, found.index);
+            range.setEnd(node, found.index + found[0].length);
+            ranges.push(range);
+            keywordRanges.add(range);
+        }
+    }
+
+    return () => ranges.forEach(range => keywordRanges.delete(range));
+}
+
+export function nameOf(message: Message) {
+    const { author } = message;
+    if (author.id === UserStore.getCurrentUser()?.id) return "You";
+    return RelationshipStore.getNickname(author.id) || author.globalName || author.username;
 }

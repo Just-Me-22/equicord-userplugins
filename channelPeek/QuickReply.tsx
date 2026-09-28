@@ -6,10 +6,12 @@
 
 import { classNameFactory } from "@utils/css";
 import { sendMessage } from "@utils/discord";
-import { Channel } from "@vencord/discord-types";
-import { ChannelStore, createRoot, Popout, useEffect, useRef, useState } from "@webpack/common";
+import { Channel, Message } from "@vencord/discord-types";
+import { ChannelStore, createRoot, IconUtils, Popout, useEffect, useRef, useState } from "@webpack/common";
 import type { Root } from "react-dom/client";
 
+import { plainText } from "./describe";
+import { nameOf } from "./format";
 import { emojiMarkup, EmojiSelectPayload, ReactionEmojiPicker } from "./picker";
 
 const cl = classNameFactory("vc-channel-peek-");
@@ -23,7 +25,7 @@ function close() {
     root?.render(null);
 }
 
-function Composer({ channel, anchor }: { channel: Channel; anchor: DOMRect; }) {
+function Composer({ channel, anchor, message }: { channel: Channel; anchor: DOMRect; message: Message; }) {
     const [value, setValue] = useState("");
     const [sending, setSending] = useState(false);
     const input = useRef<HTMLTextAreaElement>(null);
@@ -57,7 +59,9 @@ function Composer({ channel, anchor }: { channel: Channel; anchor: DOMRect; }) {
 
         setSending(true);
         try {
-            await sendMessage(channel.id, { content });
+            await sendMessage(channel.id, { content }, true, {
+                messageReference: { guild_id: channel.guild_id, channel_id: channel.id, message_id: message.id }
+            });
             close();
         } finally {
             setSending(false);
@@ -90,10 +94,15 @@ function Composer({ channel, anchor }: { channel: Channel; anchor: DOMRect; }) {
         box.style.height = `${box.scrollHeight}px`;
     }, [value]);
 
-    const top = Math.max(8, Math.min(anchor.top, window.innerHeight - 90));
+    const top = Math.max(8, Math.min(anchor.top - 12, window.innerHeight - 130));
 
     return <div className={cl("reply")} style={{ left: anchor.right + 8, top }}>
-        <div className={cl("reply-target")}>#{channel.name}</div>
+        <div className={cl("reply-target")}>Replying in #{channel.name}</div>
+        <div className={cl("reply-quote")}>
+            <img className={cl("reply-quote-avatar")} src={IconUtils.getUserAvatarURL(message.author, false, 32)} alt="" />
+            <span className={cl("reply-quote-name")}>{nameOf(message)}</span>
+            <span className={cl("reply-quote-text")}>{plainText(message)}</span>
+        </div>
         <div className={cl("reply-row")}>
             <textarea
                 ref={input}
@@ -147,7 +156,7 @@ function Composer({ channel, anchor }: { channel: Channel; anchor: DOMRect; }) {
     </div>;
 }
 
-export function openQuickReply(channel: Channel, anchor: DOMRect) {
+export function openQuickReply(channel: Channel, anchor: DOMRect, message: Message) {
     if (!host) {
         host = document.createElement("div");
         host.className = cl("reply-host");
@@ -155,7 +164,7 @@ export function openQuickReply(channel: Channel, anchor: DOMRect) {
         root = createRoot(host);
     }
 
-    root!.render(<Composer channel={ChannelStore.getChannel(channel.id) ?? channel} anchor={anchor} />);
+    root!.render(<Composer key={message.id} channel={ChannelStore.getChannel(channel.id) ?? channel} anchor={anchor} message={message} />);
 }
 
 export function destroyQuickReply() {

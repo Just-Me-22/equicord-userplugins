@@ -128,7 +128,7 @@ export const settings = definePluginSettings({
     headingUrgency: heading("What is worth your attention"),
     boldMentions: {
         type: OptionType.BOOLEAN,
-        description: "Bold the preview when the message mentions you.",
+        description: "Mark previews that mention you.",
         default: false
     },
     dimRead: {

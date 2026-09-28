@@ -6,7 +6,7 @@
 
 import { classNameFactory } from "@utils/css";
 import { Channel, Message, MessageAttachment } from "@vencord/discord-types";
-import { Constants, Parser, RestAPI, useEffect, useState } from "@webpack/common";
+import { Constants, Parser, RestAPI, Tooltip, useEffect, useState } from "@webpack/common";
 
 import { rowSettings, settings } from "./settings";
 
@@ -71,10 +71,10 @@ function kindOf(attachment: MessageAttachment) {
     return null;
 }
 
-function thumbFor(proxyUrl: string) {
+function thumbFor(proxyUrl: string, size: number) {
     const url = new URL(proxyUrl);
-    url.searchParams.set("width", "32");
-    url.searchParams.set("height", "32");
+    url.searchParams.set("width", String(size));
+    url.searchParams.set("height", String(size));
     return url.href;
 }
 
@@ -89,12 +89,15 @@ function Thumb({ attachment, blur }: { attachment: MessageAttachment; blur: bool
     const src = useLiveUrl(attachment.proxy_url);
     if (!src) return <>{attachmentText(attachment)}</>;
 
-    return <img
-        className={cl("thumb", { "thumb-blurred": blur })}
-        src={thumbFor(src)}
-        alt={attachment.filename}
-        loading="lazy"
-    />;
+    return <Tooltip text={<img className={cl("thumb-large")} src={thumbFor(src, 240)} alt={attachment.filename} />}>
+        {tip => <img
+            {...tip}
+            className={cl("thumb", { "thumb-blurred": blur })}
+            src={thumbFor(src, 32)}
+            alt={attachment.filename}
+            loading="lazy"
+        />}
+    </Tooltip>;
 }
 
 function attachmentNode(attachment: MessageAttachment, channel: Channel) {

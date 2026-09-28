@@ -25,6 +25,7 @@ import { describe } from "./describe";
 import { getOverrides, migrateOverrides, resolveEmoji, setOverride } from "./emoji";
 import { refresh as refreshFilter, startFilter, stopFilter } from "./filter";
 import { attachFilterBar, stopFilterBar } from "./FilterBar";
+import { startKeywordHighlight, stopKeywordHighlight } from "./format";
 import { lastMessageOf, startGateway, stopGateway } from "./gateway";
 import Preview from "./Preview";
 import { destroyQuickReply } from "./QuickReply";
@@ -242,6 +243,7 @@ export default definePlugin({
         FluxDispatcher.subscribe("CHANNEL_SELECT", onChannelSelect);
         syncFilter();
         startCategories();
+        startKeywordHighlight();
     },
 
     stop() {
@@ -259,6 +261,7 @@ export default definePlugin({
         stopCategories();
         stopTicker();
         destroyQuickReply();
+        stopKeywordHighlight();
     },
 
     subtitleHeight(entry: { subtitle?: unknown; record: Channel; }, selectedVoice: boolean) {

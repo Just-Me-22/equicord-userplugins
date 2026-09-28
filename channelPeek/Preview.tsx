@@ -15,13 +15,14 @@ import { Channel, Message } from "@vencord/discord-types";
 import { ChannelType } from "@vencord/discord-types/enums";
 import {
     Constants, GuildMemberStore, IconUtils, NavigationRouter, PermissionsBits, PermissionStore, Popout,
-    ReadStateStore, ReadStateUtils, RelationshipStore, RestAPI, showToast, Toasts, TypingStore, useEffect,
+    ReadStateStore, ReadStateUtils, RelationshipStore, RestAPI, showToast, Toasts, Tooltip, TypingStore, useEffect,
     useRef, UserGuildSettingsStore, UserStore, useState, useStateFromStores, VoiceStateStore
 } from "@webpack/common";
+import type { ReactNode } from "react";
 
 import { activityOf } from "./activity";
 import { describe, plainText } from "./describe";
-import { ageOf, isStale, matchesKeyword } from "./format";
+import { ageOf, isStale, markKeywords, matchesKeyword, nameOf } from "./format";
 import { lastMessageOf, subscribeChannel } from "./gateway";
 import { EmojiSelectPayload, emojiValue, ReactionEmojiPicker } from "./picker";
 import { openQuickReply } from "./QuickReply";
@@ -71,12 +72,6 @@ function displayName(userId: string, fallback: string) {
     return RelationshipStore.getNickname(userId) || user.globalName || user.username;
 }
 
-function nameOf(message: Message) {
-    const { author } = message;
-    if (author.id === UserStore.getCurrentUser()?.id) return "You";
-    return RelationshipStore.getNickname(author.id) || author.globalName || author.username;
-}
-
 function mentionsMe(message: Message) {
     if (message.mentionEveryone) return true;
 
@@ -100,7 +95,9 @@ function VoiceLine({ channel }: { channel: Channel; }) {
     const shown = names.slice(0, 3).join(", ");
     const extra = names.length - Math.min(names.length, 3);
 
-    return <span className={cl("preview")}>{extra > 0 ? `${shown} +${extra}` : shown}</span>;
+    return <span className={cl("preview")}>
+        <span className={cl("text")}>{extra > 0 ? `${shown} +${extra}` : shown}</span>
+    </span>;
 }
 
 function Heatmap({ channelId }: { channelId: string; }) {
@@ -108,7 +105,7 @@ function Heatmap({ channelId }: { channelId: string; }) {
     if (!bars) return null;
 
     const stops = bars.map((level, hour) =>
-        `color-mix(in srgb, currentcolor ${Math.round(15 + level * 85)}%, transparent) ${hour * 2}px ${hour * 2 + 2}px`);
+        `color-mix(in srgb, currentcolor ${Math.round(15 + level * 85)}%, transparent) ${(hour / 24 * 100).toFixed(2)}% ${((hour + 1) / 24 * 100).toFixed(2)}%`);
 
     return <span className={cl("heat")} style={{ backgroundImage: `linear-gradient(to right, ${stops.join()})` }} aria-hidden="true" />;
 }
@@ -151,54 +148,103 @@ function ReactButton({ channel, message }: { channel: Channel; message: Message;
             />
         )}
     >
-        {(popoutProps: any) => <button
-            {...popoutProps}
-            ref={trigger}
-            className={cl("action")}
-            aria-label="React to the last message"
+        {(popoutProps: any) => <Tooltip text="React">
+            {tip => <button
+                {...popoutProps}
+                {...tip}
+                ref={trigger}
+                className={cl("action")}
+                onClick={e => {
+                    stop(e);
+                    tip.onClick?.();
+                    popoutProps.onClick?.(e);
+                }}
+            >
+                <svg width={14} height={14} viewBox="0 0 24 24" aria-hidden="true">
+                    <path fill="currentColor" d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20Zm0 18a8 8 0 1 1 0-16 8 8 0 0 1 0 16ZM9 9.5a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0Zm9 0a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0ZM12 18a5.5 5.5 0 0 0 5-3.2 1 1 0 0 0-1.8-.9A3.5 3.5 0 0 1 12 16a3.5 3.5 0 0 1-3.2-2.1 1 1 0 1 0-1.8.9A5.5 5.5 0 0 0 12 18Z" />
+                </svg>
+            </button>}
+        </Tooltip>}
+    </Popout>;
+}
+
+function Action({ label, className, disabled, onClick, children }: {
+    label: string;
+    className?: string;
+    disabled?: boolean;
+    onClick(e: React.MouseEvent<HTMLButtonElement>): void;
+    children: ReactNode;
+}) {
+    return <Tooltip text={label}>
+        {tip => <button
+            {...tip}
+            className={classes(cl("action"), className)}
+            disabled={disabled}
             onClick={e => {
                 stop(e);
-                popoutProps.onClick?.(e);
+                tip.onClick?.();
+                onClick(e);
             }}
         >
-            <svg width={12} height={12} viewBox="0 0 24 24">
-                <path fill="currentColor" d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20Zm0 18a8 8 0 1 1 0-16 8 8 0 0 1 0 16ZM9 9.5a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0Zm9 0a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0ZM12 18a5.5 5.5 0 0 0 5-3.2 1 1 0 0 0-1.8-.9A3.5 3.5 0 0 1 12 16a3.5 3.5 0 0 1-3.2-2.1 1 1 0 1 0-1.8.9A5.5 5.5 0 0 0 12 18Z" />
-            </svg>
+            {children}
         </button>}
-    </Popout>;
+    </Tooltip>;
 }
 
 function Actions({ channel, message, unread }: { channel: Channel; message: Message; unread: boolean; }) {
     const { markReadButton, quickReply, quickReact } = settings.use(["markReadButton", "quickReply", "quickReact"]);
-    if (!markReadButton && !quickReply && !quickReact) return null;
+    const [acked, setAcked] = useState(false);
+
+    useEffect(() => {
+        if (!acked) return;
+        const timer = setTimeout(() => setAcked(false), 800);
+        return () => clearTimeout(timer);
+    }, [acked]);
+
+    const reacts = quickReact && canReact(channel);
+    const marks = markReadButton && (unread || acked);
+    if (!quickReply && !reacts && !marks) return null;
 
     return <span className={cl("actions")}>
-        {quickReply && <button
-            className={cl("action")}
-            aria-label="Reply without opening the channel"
-            onClick={e => {
-                stop(e);
-                openQuickReply(channel, e.currentTarget.getBoundingClientRect());
-            }}
-        >
-            <svg width={12} height={12} viewBox="0 0 24 24">
+        {quickReply && <Action label="Reply" onClick={e => openQuickReply(channel, e.currentTarget.getBoundingClientRect(), message)}>
+            <svg width={14} height={14} viewBox="0 0 24 24" aria-hidden="true">
                 <path fill="currentColor" d="M10 9V5l-7 7 7 7v-4.1c5 0 8.5 1.6 11 5.1-1-5-4-10-11-11Z" />
             </svg>
-        </button>}
-        {quickReact && canReact(channel) && <ReactButton channel={channel} message={message} />}
-        {markReadButton && unread && <button
-            className={cl("action")}
-            aria-label="Mark as read"
-            onClick={e => {
-                stop(e);
+        </Action>}
+        {reacts && <ReactButton channel={channel} message={message} />}
+        {marks && <Action
+            label={acked ? "Marked as read" : "Mark as read"}
+            className={acked ? cl("action-done") : undefined}
+            disabled={acked}
+            onClick={() => {
                 ReadStateUtils.ackChannel(channel);
+                setAcked(true);
             }}
         >
-            <svg width={12} height={12} viewBox="0 0 24 24">
+            <svg width={14} height={14} viewBox="0 0 24 24" aria-hidden="true">
                 <path fill="currentColor" d="M9 16.2 4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4L9 16.2Z" />
             </svg>
-        </button>}
+        </Action>}
     </span>;
+}
+
+function Text({ keyed, title, children }: { keyed: boolean; title?: string; children: ReactNode; }) {
+    const box = useRef<HTMLSpanElement>(null);
+
+    useEffect(() => {
+        if (!keyed || !box.current) return;
+        return markKeywords(box.current);
+    });
+
+    return <span ref={box} className={cl("text")} title={title}>{children}</span>;
+}
+
+function TypingDots() {
+    return <svg className={cl("dots")} width={16} height={6} viewBox="0 0 16 6" aria-hidden="true">
+        <circle cx={3} cy={3} r={2} fill="currentColor" />
+        <circle cx={8} cy={3} r={2} fill="currentColor" />
+        <circle cx={13} cy={3} r={2} fill="currentColor" />
+    </svg>;
 }
 
 const Preview = ErrorBoundary.wrap(function Preview({ channel }: { channel: Channel; }) {
@@ -212,8 +258,9 @@ const Preview = ErrorBoundary.wrap(function Preview({ channel }: { channel: Chan
     const message = useLastMessage(channel);
     const read = useStateFromStores([ReadStateStore], () => ({
         unread: ReadStateStore.hasUnread(channel.id),
-        count: ReadStateStore.getUnreadCount(channel.id)
-    }), [channel.id], (a, b) => a.unread === b.unread && a.count === b.count);
+        count: ReadStateStore.getUnreadCount(channel.id),
+        mentions: ReadStateStore.getMentionCount(channel.id)
+    }), [channel.id], (a, b) => a.unread === b.unread && a.count === b.count && a.mentions === b.mentions);
 
     const typing = useStateFromStores([TypingStore], () => {
         if (!settings.store.typingIndicator) return "";
@@ -224,7 +271,10 @@ const Preview = ErrorBoundary.wrap(function Preview({ channel }: { channel: Chan
     useMinute(settings.store.showAge || settings.store.staleAfter > 0);
 
     if (typing) {
-        return <span className={classes(cl("preview"), cl("typing"))}>{typingLabel(typing.split(","))}</span>;
+        return <span className={classes(cl("preview"), cl("typing"))}>
+            <TypingDots />
+            <span className={cl("text")}>{typingLabel(typing.split(","))}</span>
+        </span>;
     }
 
     if (channel.type === ChannelType.GUILD_VOICE || channel.type === ChannelType.GUILD_STAGE_VOICE) {
@@ -253,12 +303,10 @@ const Preview = ErrorBoundary.wrap(function Preview({ channel }: { channel: Chan
 
     const isReply = settings.store.replyContext && Boolean((message as any).messageReference);
 
-    const body = <>
-        {avatar && <img className={cl("avatar")} src={avatar} alt="" loading="lazy" />}
-        {isReply && <span className={cl("reply-mark")}>{"↳ "}</span>}
-        {name && <span className={cl("author")} style={!wholeLine && color ? { color } : undefined}>{name}: </span>}
-        {text}
-    </>;
+    const mentioned = settings.store.boldMentions && mentionsMe(message);
+    const lead = settings.store.showAuthor || !name;
+    const showCount = settings.store.unreadCount && read.count > 0;
+    const showAge = settings.store.showAge && timestamp > 0;
 
     const jump = settings.store.jumpToMessage
         ? (e: React.MouseEvent) => {
@@ -273,20 +321,26 @@ const Preview = ErrorBoundary.wrap(function Preview({ channel }: { channel: Chan
             cl("preview"),
             cl("preview-" + settings.store.iconSize),
             cl("lines-" + settings.store.previewLines),
-            dimmed ? cl("dimmed") : undefined,
-            isStale(timestamp) ? cl("stale") : undefined,
-            matchesKeyword(raw) ? cl("keyword") : undefined,
-            settings.store.boldMentions && mentionsMe(message) ? cl("mention") : undefined
+            dimmed || isStale(timestamp) ? cl("faded") : undefined
         )}
         style={wholeLine && color ? { color } : undefined}
-        title={settings.store.fullTextTooltip ? `${name ? name + ": " : ""}${raw}` : undefined}
         onClick={jump}
     >
-        {settings.store.showAuthor || !name ? body : text}
+        <Text keyed={matchesKeyword(raw)} title={settings.store.fullTextTooltip ? `${name ? name + ": " : ""}${raw}` : undefined}>
+            {lead && avatar && <img className={cl("avatar")} src={avatar} alt="" loading="lazy" />}
+            {lead && isReply && <svg className={cl("reply-mark")} width={12} height={12} viewBox="0 0 24 24" aria-label="Reply">
+                <path d="M6 4v7a4 4 0 0 0 4 4h9m-4-4 4 4-4 4" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round" />
+            </svg>}
+            {lead && name && <span className={cl("author")} style={color ? { color } : undefined}>{name}</span>}
+            {mentioned && <span className={cl("at")} aria-label="Mentions you">@</span>}
+            {text}
+        </Text>
         {settings.store.heatmap && <Heatmap channelId={channel.id} />}
-        {settings.store.unreadCount && read.count > 0 && <span className={cl("count")}>{read.count}</span>}
-        {settings.store.showAge && timestamp > 0 && <span className={cl("age")}>{ageOf(timestamp)}</span>}
         <Actions channel={channel} message={message} unread={read.unread} />
+        {(showCount || showAge) && <span className={cl("meta")}>
+            {showCount && <span className={cl("count", { "count-mention": read.mentions > 0 })}>{read.count}</span>}
+            {showAge && <span className={cl("age")}>{ageOf(timestamp)}</span>}
+        </span>}
     </span>;
 }, { noop: true });
 
