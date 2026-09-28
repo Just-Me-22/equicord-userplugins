@@ -1,22 +1,27 @@
 # ChannelHoverPreview
 
-Rest on a DM or a server channel in the sidebar and a window opens beside it with that
-channel's recent messages. Read it, scroll it, click a message to jump there, move away and
-it closes. Nothing is marked read.
+Rest on a DM, a server channel or a server icon and a window opens beside it. Channels show
+their recent messages with a box to reply from, servers list their unread channels. Scroll up
+for older messages, click one to jump there, pin the window to keep it, move away and it
+closes. Nothing is marked read unless you press the button.
 
 ## Settings
 
 | Setting | What it does |
 |---|---|
 | Message count | How many messages to load |
-| Hover delay | How long to rest on a channel before it opens |
+| Hover delay | The longest wait before it opens while the mouse keeps moving |
+| Open when the mouse slows | Opens as soon as the pointer settles on a row |
 | Key / Only open while held | Which modifier, and whether it skips the delay or is required to open at all |
 | Scrollbar | Thin, or Wide for a bigger grab target |
 | Height, Width, Message gap | Size of the window and the spacing inside it |
 | Animation | Fade, pop, slide or none |
 | Display style | Follow your chat setting, or force compact or cozy |
 | Click to jump | Whether clicking a message opens the channel at it |
-| DMs / Server channels | Which of the two to preview |
+| Message box | A box at the bottom to send or reply from |
+| Shrink media | Images and embeds become a short strip |
+| Only unread | Show only the unread messages when there are any |
+| DMs / Server channels / Server icons | Which of the three to preview |
 
 ## Notes for anyone reading the source
 
@@ -71,12 +76,16 @@ window opens showing the error.
 
 **Messages in the preview are read-only, and reactions show Discord's `not-allowed` cursor.**
 That is Discord's own doing: a message component rendered on its own is read-only, and only
-its full channel view makes one live. Mounting that view does fix reactions, replies and the
-hover toolbar — it also brings a message box with it and costs a great deal more to open, so
-this plugin does not.
+its full channel view makes one live. Mounting that view would fix reactions, replies and the
+hover toolbar, but it also brings a message box with it and costs a great deal more to open.
+So the plugin draws its own small toolbar and message box instead, which call the same REST
+endpoints Discord's buttons do.
 
 **Previewing never marks a channel read.** It only fetches history; verified against a channel
-that kept its unread pill and its bold name afterwards.
+that kept its unread pill and its bold name afterwards. Only the header's mark-read button does.
+
+**Server icons are found by `data-list-item-id="guildsnav___<id>"`,** from one `mouseover`
+listener on the document, since there is no verified patch anchor for the guild list yet.
 
 **No `:has()` anywhere.** Style recalculation is the expensive part of a Discord client and
 `:has()` is the most expensive thing in a stylesheet; a class hook does the same jobs here.
