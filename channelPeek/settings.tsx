@@ -71,8 +71,24 @@ export const settings = definePluginSettings({
         description: "How a message that is only a link reads.",
         options: [
             { label: "The raw URL", value: "raw", default: true },
-            { label: "Just the site", value: "domain" }
+            { label: "Just the site", value: "domain" },
+            { label: "The site and the title", value: "title" }
         ]
+    },
+    codePreview: {
+        type: OptionType.BOOLEAN,
+        description: "Show the first line of a code block in a code font, with its language.",
+        default: false
+    },
+    editedMarks: {
+        type: OptionType.BOOLEAN,
+        description: "Mark edited messages, and strike through a message that was deleted.",
+        default: false
+    },
+    eventBadges: {
+        type: OptionType.BOOLEAN,
+        description: "Show poll votes, and events starting soon in that channel.",
+        default: false
     },
     replyContext: {
         type: OptionType.BOOLEAN,
@@ -85,6 +101,25 @@ export const settings = definePluginSettings({
         options: [
             { label: "One", value: "1", default: true },
             { label: "Two", value: "2" }
+        ]
+    },
+    whoTalking: {
+        type: OptionType.BOOLEAN,
+        description: "Show the last three people who talked, as small stacked avatars.",
+        default: false
+    },
+    friendRing: {
+        type: OptionType.BOOLEAN,
+        description: "Ring the avatar and name of friends.",
+        default: false
+    },
+    bots: {
+        type: OptionType.SELECT,
+        description: "How messages from bots show.",
+        options: [
+            { label: "Like everyone else", value: "normal", default: true },
+            { label: "Lighter", value: "light" },
+            { label: "Skip to the last person", value: "skip" }
         ]
     },
     fullTextTooltip: {
@@ -116,6 +151,11 @@ export const settings = definePluginSettings({
     voiceOccupants: {
         type: OptionType.BOOLEAN,
         description: "Show who is in a voice channel on its second line.",
+        default: false
+    },
+    voiceDetail: {
+        type: OptionType.BOOLEAN,
+        description: "Add how long the call has run, and mark streams and cameras.",
         default: false
     },
     categorySummary: {
@@ -162,6 +202,17 @@ export const settings = definePluginSettings({
         default: false
     },
 
+    burstBadge: {
+        type: OptionType.BOOLEAN,
+        description: "Flag a channel that suddenly gets busy, like 12 new in 2 minutes.",
+        default: false
+    },
+    unreadDivider: {
+        type: OptionType.BOOLEAN,
+        description: "Draw a line where unread channels end and read ones begin.",
+        default: false,
+        onChange: () => hooks.filterChanged()
+    },
     heatmap: {
         type: OptionType.BOOLEAN,
         description: "Show a 24 hour activity bar. It fills in as messages arrive, it cannot look backwards.",
@@ -190,6 +241,26 @@ export const settings = definePluginSettings({
         default: false
     },
 
+    hoverCard: {
+        type: OptionType.BOOLEAN,
+        description: "Keep hovering a preview to see the last few messages. Scroll in it for older ones.",
+        default: false
+    },
+    translateButton: {
+        type: OptionType.BOOLEAN,
+        description: "Hovering offers a translate button, when the Translate plugin is on.",
+        default: false
+    },
+    laterButton: {
+        type: OptionType.BOOLEAN,
+        description: "Hovering offers a read later button. Saved messages show in Catch Up.",
+        default: false
+    },
+    pauseKey: {
+        type: OptionType.BOOLEAN,
+        description: "Ctrl+Shift+P hides every preview until you press it again.",
+        default: false
+    },
     catchUpButton: {
         type: OptionType.BOOLEAN,
         description: "Add a Catch Up item to the server menu, listing everything unread.",
@@ -257,8 +328,51 @@ export const settings = definePluginSettings({
         type: OptionType.CUSTOM,
         description: "",
         default: [] as string[]
+    },
+    skippedAuthors: {
+        type: OptionType.CUSTOM,
+        description: "",
+        default: [] as string[]
+    },
+    guildStyles: {
+        type: OptionType.CUSTOM,
+        description: "",
+        default: {} as Record<string, GuildStyle>
+    },
+    later: {
+        type: OptionType.CUSTOM,
+        description: "",
+        default: [] as Later[]
     }
 });
+
+export interface GuildStyle {
+    avatars?: boolean;
+    names?: boolean;
+    dimRead?: boolean;
+    twoLines?: boolean;
+}
+
+export interface Later {
+    channelId: string;
+    guildId: string;
+    messageId: string;
+    name: string;
+    text: string;
+    at: number;
+}
+
+export const paused = { on: false };
+
+export function styleFor(guildId: string | undefined) {
+    const own = guildId ? (settings.store.guildStyles as Record<string, GuildStyle>)[guildId] : undefined;
+    return {
+        showAvatar: own?.avatars ?? settings.store.showAvatar,
+        showAuthor: own?.names ?? settings.store.showAuthor,
+        dimRead: own?.dimRead ?? settings.store.dimRead,
+        previewLines: own?.twoLines === undefined ? settings.store.previewLines : own.twoLines ? "2" : "1"
+    };
+}
 
 function readRowSettings() {
     const { threads, forums, voiceOccupants, mutedChannels, previewLines, mutedPreviews, mutedGuilds } = settings.store;

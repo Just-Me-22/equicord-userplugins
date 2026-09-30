@@ -11,9 +11,11 @@ import {
     ReadStateUtils, Text, useState
 } from "@webpack/common";
 
+import { busiest } from "./activity";
 import { plainText } from "./describe";
 import { ageOf } from "./format";
 import { lastMessageOf } from "./gateway";
+import { Later, settings } from "./settings";
 
 const cl = classNameFactory("vc-channel-peek-");
 
@@ -62,13 +64,105 @@ function byServer(rows: Row[]) {
     return [...servers];
 }
 
+type Tab = "unread" | "day" | "later";
+
+function DayList({ close }: { close: () => void; }) {
+    const rows = busiest()
+        .map(one => ({ ...one, channel: ChannelStore.getChannel(one.channelId) }))
+        .filter(one => one.channel?.guild_id)
+        .slice(0, 40);
+
+    if (!rows.length) return <Text variant="text-sm/normal">Nothing counted yet. This fills in as messages arrive.</Text>;
+
+    return <div className={cl("catchup-list")}>
+        {rows.map(({ channel, total }) => {
+            const message = lastMessageOf(channel!);
+            return <button
+                key={channel!.id}
+                className={cl("catchup-open", "catchup-row-solo")}
+                onClick={() => {
+                    close();
+                    NavigationRouter.transitionTo(`/channels/${channel!.guild_id}/${channel!.id}`);
+                }}
+            >
+                <span className={cl("catchup-where")}>
+                    <span className={cl("catchup-channel")}>#{channel!.name}</span>
+                    <span className={cl("catchup-server-inline")}>{GuildStore.getGuild(channel!.guild_id)?.name}</span>
+                    <span className={cl("count")}>{total}</span>
+                </span>
+                <span className={cl("catchup-text")}>{message ? `last: ${plainText(message)}` : `${total} messages`}</span>
+            </button>;
+        })}
+    </div>;
+}
+
+function LaterList({ close }: { close: () => void; }) {
+    const [list, setList] = useState(() => settings.store.later as Later[]);
+    const drop = (messageId: string) => {
+        const next = list.filter(one => one.messageId !== messageId).map(one => ({ ...one }));
+        settings.store.later = next;
+        setList(next);
+    };
+
+    if (!list.length) return <Text variant="text-sm/normal">Nothing saved. Hover a preview and press the bookmark.</Text>;
+
+    return <div className={cl("catchup-list")}>
+        {list.map(one => {
+            const channel = ChannelStore.getChannel(one.channelId);
+            return <div className={cl("catchup-row")} key={one.messageId}>
+                <button
+                    className={cl("catchup-open")}
+                    onClick={() => {
+                        close();
+                        NavigationRouter.transitionTo(`/channels/${one.guildId}/${one.channelId}/${one.messageId}`);
+                    }}
+                >
+                    <span className={cl("catchup-where")}>
+                        <span className={cl("catchup-channel")}>#{channel?.name ?? "deleted channel"}</span>
+                        {one.name && <span className={cl("catchup-server-inline")}>{one.name}</span>}
+                        <span className={cl("age")}>{ageOf(one.at)}</span>
+                    </span>
+                    <span className={cl("catchup-text")}>{one.text}</span>
+                </button>
+                <button className={cl("catchup-ack")} aria-label="Remove" onClick={() => drop(one.messageId)}>
+                    <svg width={14} height={14} viewBox="0 0 24 24">
+                        <path fill="currentColor" d="M6.4 5 12 10.6 17.6 5 19 6.4 13.4 12 19 17.6 17.6 19 12 13.4 6.4 19 5 17.6 10.6 12 5 6.4 6.4 5Z" />
+                    </svg>
+                </button>
+            </div>;
+        })}
+    </div>;
+}
+
 function CatchUpModal(props: any) {
     const [rows, setRows] = useState(unreadRows);
+    const [tab, setTab] = useState<Tab>("unread");
 
     const drop = (channelId: string) => setRows(current => current.filter(row => row.channel.id !== channelId));
 
-    return <Modal {...props} size="large" title={`Catch up (${rows.length})`}>
-        <div className={cl("catchup-tools")}>
+    const tabs: { id: Tab; label: string; }[] = [
+        { id: "unread", label: `Unread ${rows.length}` },
+        { id: "day", label: "Last 24 hours" },
+        { id: "later", label: `Later ${(settings.store.later as Later[]).length}` }
+    ];
+
+    return <Modal {...props} size="large" title="Catch up">
+        <div className={cl("catchup-tabs")} role="tablist">
+            {tabs.map(one => <button
+                key={one.id}
+                role="tab"
+                aria-selected={tab === one.id}
+                className={cl("catchup-tab")}
+                onClick={() => setTab(one.id)}
+            >
+                {one.label}
+            </button>)}
+        </div>
+
+        {tab === "day" && <DayList close={props.onClose} />}
+        {tab === "later" && <LaterList close={props.onClose} />}
+
+        {tab === "unread" && <><div className={cl("catchup-tools")}>
             <Button
                 size={Button.Sizes.SMALL}
                 color={Button.Colors.PRIMARY}
@@ -115,7 +209,7 @@ function CatchUpModal(props: any) {
                     </button>
                 </div>)}
             </section>)}
-        </div>
+        </div></>}
     </Modal>;
 }
 

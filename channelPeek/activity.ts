@@ -47,6 +47,13 @@ export function activityOf(channelId: string) {
     return peak > 0 ? entry.counts.map(count => count / peak) : undefined;
 }
 
+export function busiest() {
+    return Object.entries(buckets)
+        .map(([channelId, entry]) => ({ channelId, total: rolled(entry).counts.reduce((sum, count) => sum + count, 0) }))
+        .filter(one => one.total > 0)
+        .sort((a, b) => b.total - a.total);
+}
+
 export async function loadActivity() {
     buckets = (await DataStore.get<Buckets>(KEY)) ?? {};
     saver = setInterval(() => {

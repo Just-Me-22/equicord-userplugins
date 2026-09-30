@@ -116,12 +116,48 @@ function embedText(message: Message) {
     return embed.rawTitle || embed.title || embed.provider?.name || "sent an embed";
 }
 
+const CODE = /^```([\w+-]*)\n?([\s\S]*?)(?:```|$)/;
+
+function codeNode(content: string) {
+    const code = content.match(CODE);
+    if (!code) return null;
+    const first = code[2].split("\n").find(line => line.trim()) ?? "";
+    return <span className={cl("code")}>
+        {code[1] && <span className={cl("code-lang")}>{code[1]}</span>}
+        <code>{first}</code>
+    </span>;
+}
+
+function linkTitle(message: Message, url: string) {
+    const embed = message.embeds?.[0] as any;
+    const title = embed?.rawTitle || embed?.title;
+    const site = embed?.provider?.name || new URL(url).hostname.replace(/^www\./, "");
+    return title ? `${site} · ${title}` : site;
+}
+
+function pollText(message: Message) {
+    const poll = message.poll as any;
+    const question = poll.question?.text;
+    if (!settings.store.eventBadges) return question ? `Poll: ${question}` : "sent a poll";
+
+    const counts: any[] = poll.results?.answer_counts ?? poll.results?.answerCounts ?? [];
+    const votes = counts.reduce((sum, one) => sum + (one.count ?? 0), 0);
+    return `Poll: ${question ?? "untitled"}${counts.length ? `, ${votes} vote${votes === 1 ? "" : "s"}` : ""}`;
+}
+
 function bodyOf(message: Message, channel: Channel): React.ReactNode {
     if (message.content) {
-        const link = settings.store.linkStyle === "domain" && message.content.match(ONLY_LINK);
+        if (settings.store.codePreview) {
+            const code = codeNode(message.content);
+            if (code) return code;
+        }
+
+        const link = settings.store.linkStyle !== "raw" && message.content.match(ONLY_LINK);
         if (link) {
             try {
-                return new URL(link[1]).hostname.replace(/^www\./, "");
+                return settings.store.linkStyle === "title"
+                    ? linkTitle(message, link[1])
+                    : new URL(link[1]).hostname.replace(/^www\./, "");
             } catch {
                 return Parser.parseInlineReply(message.content);
             }
@@ -129,7 +165,7 @@ function bodyOf(message: Message, channel: Channel): React.ReactNode {
         return Parser.parseInlineReply(message.content);
     }
 
-    if (message.poll) return message.poll.question.text ? `Poll: ${message.poll.question.text}` : "sent a poll";
+    if (message.poll) return pollText(message);
 
     const attachment = message.attachments?.[0];
     if (attachment) return attachmentNode(attachment, channel);

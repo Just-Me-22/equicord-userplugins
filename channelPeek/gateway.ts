@@ -7,9 +7,10 @@
 import { Logger } from "@utils/Logger";
 import { Channel, Message } from "@vencord/discord-types";
 import { findByPropsLazy } from "@webpack";
-import { FluxDispatcher, GuildChannelStore, GuildMemberStore, MessageStore, SelectedGuildStore } from "@webpack/common";
+import { FluxDispatcher, GuildChannelStore, GuildMemberStore, MessageStore, SelectedGuildStore, VoiceStateStore } from "@webpack/common";
 
 import { recordMessage } from "./activity";
+import { clearDeleted, clearRecent, isHeld, noteArrival, noteAuthor, noteDeleted, noteOccupancy, release } from "./recent";
 import { hooks, settings } from "./settings";
 import { refreshAutoCollapse } from "./sidebar";
 
@@ -64,9 +65,15 @@ function previewAuthorId(guildId: string, channelId: string) {
 
 function onMessageEvent(event: any) {
     if (event.type === "MESSAGE_CREATE" && event.message?.channel_id) {
-        recordMessage(event.message.channel_id);
+        const channelId = event.message.channel_id;
+        recordMessage(channelId);
+        noteArrival(channelId);
+        if (event.message.author?.id) noteAuthor(channelId, event.message.author.id);
+        clearDeleted(channelId);
         refreshAutoCollapse();
     }
+
+    if (event.type === "MESSAGE_DELETE" && event.channelId && event.id) noteDeleted(event.channelId, event.id);
 
     if (event.messages) {
         const touched = new Set<string>();
@@ -149,7 +156,12 @@ function onMembersChunk({ guildId, members }: any) {
 
 let lastGuildId: string | null = null;
 
-function onChannelSelect({ guildId }: any) {
+function onChannelSelect({ guildId, channelId }: any) {
+    if (channelId && isHeld(channelId)) {
+        release(channelId);
+        wake(channelId);
+    }
+
     if (guildId !== lastGuildId) {
         lastGuildId = guildId ?? null;
         requested.clear();
@@ -158,17 +170,31 @@ function onChannelSelect({ guildId }: any) {
 
     requestLastMessages(guildId);
     requestMissingMembers(guildId);
+    noteStartingOccupancy(guildId);
 }
 
 function onTyping({ channelId }: any) {
     if (settings.store.typingIndicator) wake(channelId);
 }
 
+const occupants = (channelId: string) => Object.keys(VoiceStateStore.getVoiceStatesForChannel(channelId) ?? {}).length;
+
 function onVoiceState({ voiceStates }: any) {
     if (!settings.store.voiceOccupants || !voiceStates?.length) return;
     for (const state of voiceStates) {
-        if (state.channelId) wake(state.channelId);
-        if (state.oldChannelId) wake(state.oldChannelId);
+        for (const id of [state.channelId, state.oldChannelId]) {
+            if (!id) continue;
+            noteOccupancy(id, occupants(id), false);
+            wake(id);
+        }
+    }
+}
+
+function noteStartingOccupancy(guildId: string | null | undefined) {
+    if (!guildId) return;
+    for (const entry of GuildChannelStore.getChannels(guildId)?.VOCAL ?? []) {
+        const { id } = entry.channel;
+        noteOccupancy(id, occupants(id), true);
     }
 }
 
@@ -202,4 +228,5 @@ export function stopGateway() {
     watchers.clear();
     requested.clear();
     pending.clear();
+    clearRecent();
 }

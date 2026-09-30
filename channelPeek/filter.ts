@@ -11,6 +11,7 @@ import { lastMessageOf } from "./gateway";
 import { settings } from "./settings";
 
 const HIDDEN = "vc-channel-peek-filtered-out";
+const READ_START = "vc-channel-peek-read-start";
 const ROUTE = /^\/channels\/(?:@me|\d+)\/(\d+)/;
 
 let query = "";
@@ -51,6 +52,8 @@ function apply() {
     if (!list) return;
 
     const active = Boolean(query) || settings.store.hideRead;
+    const divider = settings.store.unreadDivider;
+    let previousUnread = false;
 
     for (const link of list.querySelectorAll<HTMLAnchorElement>('a[href^="/channels/"]')) {
         const row = link.closest("li");
@@ -58,6 +61,10 @@ function apply() {
 
         const channelId = link.getAttribute("href")?.match(ROUTE)?.[1];
         row.classList.toggle(HIDDEN, active && Boolean(channelId) && shouldHide(channelId!));
+
+        const unread = Boolean(channelId) && ReadStateStore.hasUnread(channelId!);
+        row.classList.toggle(READ_START, divider && previousUnread && !unread);
+        previousUnread = unread;
     }
 }
 
@@ -83,7 +90,7 @@ export function stopFilter() {
     if (frame) cancelAnimationFrame(frame);
     frame = 0;
 
-    for (const row of document.querySelectorAll(`.${HIDDEN}`)) row.classList.remove(HIDDEN);
+    for (const row of document.querySelectorAll(`.${HIDDEN}, .${READ_START}`)) row.classList.remove(HIDDEN, READ_START);
 }
 
 export function restartFilter() {
