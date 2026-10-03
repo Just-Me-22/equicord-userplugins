@@ -69,7 +69,7 @@ export const settings = definePluginSettings({
     },
     pauseWhileScrolling: {
         type: OptionType.BOOLEAN,
-        description: "Stop animating while a list is scrolling. This is when animation costs most and shows least.",
+        description: "Pause videos while a list is scrolling. This is when they cost most and show least.",
         default: true
     },
     scrollSpeed: {
@@ -79,7 +79,7 @@ export const settings = definePluginSettings({
     },
     pauseWhileTyping: {
         type: OptionType.BOOLEAN,
-        description: "Stop animating while you are typing in a text box.",
+        description: "Pause videos while you are typing in a text box.",
         default: true
     },
     pauseWhilePicking: {
@@ -99,7 +99,7 @@ export const settings = definePluginSettings({
     },
     settleDelay: {
         type: OptionType.NUMBER,
-        description: "Wait this many milliseconds before animation resumes. Discord uses 1000 for its own hover gate.",
+        description: "Wait this many milliseconds before videos resume. Discord uses 1000 for its own hover gate.",
         default: 0
     },
     maxAnimated: {

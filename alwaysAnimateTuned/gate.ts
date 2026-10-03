@@ -58,14 +58,17 @@ function awake() {
     return !idle();
 }
 
-function permitted() {
-    if (!awake()) return false;
-    if (settings.store.pauseWhileScrolling && scrolling) return false;
-    if (settings.store.pauseWhileTyping && typing) return false;
-    return WindowStore.isFocused();
+export function on() {
+    return awake() && WindowStore.isFocused();
 }
 
-export function on() {
+function permitted() {
+    if (!on()) return false;
+    if (settings.store.pauseWhileScrolling && scrolling) return false;
+    return !(settings.store.pauseWhileTyping && typing);
+}
+
+function canPlay() {
     if (!permitted()) return false;
 
     const delay = settings.store.settleDelay;
@@ -120,7 +123,7 @@ function runPass() {
     reobserve(all);
     resuming = [];
 
-    if (!on()) {
+    if (!canPlay()) {
         for (const video of all) hold(video);
         return;
     }
@@ -259,7 +262,7 @@ const INPUT: [string, EventListener][] = [
 ];
 
 function syncInput() {
-    const want = WindowStore.isFocused() && awake();
+    const want = WindowStore.isFocused();
     if (want === inputAttached) return;
     inputAttached = want;
 
