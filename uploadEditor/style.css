@@ -1,0 +1,368 @@
+.vc-upload-editor-body {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    padding-bottom: 4px;
+}
+
+.vc-upload-editor-stage {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-sizing: border-box;
+    height: min(58vh, 540px);
+    padding: 20px;
+    border-radius: 12px;
+    background: oklch(0 0 0 / 0.28);
+    overflow: hidden;
+    overscroll-behavior: contain;
+}
+
+.vc-upload-editor-frame {
+    position: relative;
+    flex: none;
+}
+
+.vc-upload-editor-canvas {
+    display: block;
+    touch-action: none;
+}
+
+.vc-upload-editor-canvas-view,
+.vc-upload-editor-canvas-draw {
+    border-radius: 6px;
+    outline: 1px solid oklch(1 0 0 / 0.1);
+    outline-offset: -1px;
+}
+
+.vc-upload-editor-canvas-view {
+    cursor: pointer;
+}
+
+.vc-upload-editor-canvas-draw {
+    cursor: crosshair;
+}
+
+.vc-upload-editor-crop {
+    position: absolute;
+    box-sizing: border-box;
+    border: 1px solid oklch(1 0 0 / 0.9);
+    box-shadow: 0 0 0 1px oklch(0 0 0 / 0.25);
+    cursor: move;
+    touch-action: none;
+}
+
+.vc-upload-editor-crop::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background:
+        linear-gradient(to right, transparent calc(100% / 3 - 0.5px), oklch(1 0 0 / 0.45) 0 calc(100% / 3 + 0.5px), transparent 0 calc(200% / 3 - 0.5px), oklch(1 0 0 / 0.45) 0 calc(200% / 3 + 0.5px), transparent 0),
+        linear-gradient(to bottom, transparent calc(100% / 3 - 0.5px), oklch(1 0 0 / 0.45) 0 calc(100% / 3 + 0.5px), transparent 0 calc(200% / 3 - 0.5px), oklch(1 0 0 / 0.45) 0 calc(200% / 3 + 0.5px), transparent 0);
+    opacity: 0;
+    transition: opacity 150ms ease-out;
+    pointer-events: none;
+}
+
+.vc-upload-editor-crop-dragging::before {
+    opacity: 1;
+}
+
+.vc-upload-editor-handle {
+    position: absolute;
+    width: 32px;
+    height: 32px;
+    margin: -16px;
+}
+
+.vc-upload-editor-handle::before {
+    content: "";
+    position: absolute;
+    border: 0 solid #fff;
+    filter: drop-shadow(0 0 1px oklch(0 0 0 / 0.5));
+}
+
+.vc-upload-editor-handle-nw { left: 0; top: 0; cursor: nwse-resize; }
+.vc-upload-editor-handle-ne { left: 100%; top: 0; cursor: nesw-resize; }
+.vc-upload-editor-handle-se { left: 100%; top: 100%; cursor: nwse-resize; }
+.vc-upload-editor-handle-sw { left: 0; top: 100%; cursor: nesw-resize; }
+.vc-upload-editor-handle-n { left: 50%; top: 0; cursor: ns-resize; }
+.vc-upload-editor-handle-s { left: 50%; top: 100%; cursor: ns-resize; }
+.vc-upload-editor-handle-e { left: 100%; top: 50%; cursor: ew-resize; }
+.vc-upload-editor-handle-w { left: 0; top: 50%; cursor: ew-resize; }
+
+.vc-upload-editor-handle-nw::before,
+.vc-upload-editor-handle-ne::before,
+.vc-upload-editor-handle-se::before,
+.vc-upload-editor-handle-sw::before {
+    width: 18px;
+    height: 18px;
+}
+
+.vc-upload-editor-handle-nw::before { left: 14px; top: 14px; border-width: 3px 0 0 3px; border-top-left-radius: 2px; }
+.vc-upload-editor-handle-ne::before { right: 14px; top: 14px; border-width: 3px 3px 0 0; border-top-right-radius: 2px; }
+.vc-upload-editor-handle-se::before { right: 14px; bottom: 14px; border-width: 0 3px 3px 0; border-bottom-right-radius: 2px; }
+.vc-upload-editor-handle-sw::before { left: 14px; bottom: 14px; border-width: 0 0 3px 3px; border-bottom-left-radius: 2px; }
+
+.vc-upload-editor-handle-n::before,
+.vc-upload-editor-handle-s::before {
+    left: 6px;
+    width: 20px;
+    height: 3px;
+    border-radius: 2px;
+    background: #fff;
+}
+
+.vc-upload-editor-handle-n::before { top: 14px; }
+.vc-upload-editor-handle-s::before { bottom: 14px; }
+
+.vc-upload-editor-handle-e::before,
+.vc-upload-editor-handle-w::before {
+    top: 6px;
+    width: 3px;
+    height: 20px;
+    border-radius: 2px;
+    background: #fff;
+}
+
+.vc-upload-editor-handle-e::before { right: 14px; }
+.vc-upload-editor-handle-w::before { left: 14px; }
+
+.vc-upload-editor-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px 12px;
+    min-height: 38px;
+}
+
+.vc-upload-editor-options {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+}
+
+.vc-upload-editor-segmented {
+    display: inline-flex;
+    gap: 2px;
+    padding: 3px;
+    border-radius: 10px;
+    background: var(--background-mod-subtle, oklch(1 0 0 / 0.05));
+}
+
+.vc-upload-editor-segment,
+.vc-upload-editor-icon-button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    height: 32px;
+    padding: 0 12px 0 10px;
+    border: none;
+    border-radius: 7px;
+    background: transparent;
+    color: var(--interactive-normal, #b5bac1);
+    font-family: inherit;
+    font-size: 14px;
+    font-weight: 500;
+    line-height: 1;
+    white-space: nowrap;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+    transition-property: background-color, color, scale;
+    transition-duration: 150ms;
+    transition-timing-function: ease-out;
+}
+
+.vc-upload-editor-segment-compact {
+    padding: 0 10px;
+    font-size: 13px;
+    font-variant-numeric: tabular-nums;
+}
+
+.vc-upload-editor-segment-square,
+.vc-upload-editor-icon-button {
+    width: 32px;
+    padding: 0;
+}
+
+.vc-upload-editor-icon-button {
+    border-radius: 8px;
+}
+
+.vc-upload-editor-segment-active {
+    background: var(--background-mod-strong, oklch(1 0 0 / 0.14));
+    color: var(--interactive-active, #fff);
+    box-shadow: 0 1px 2px oklch(0 0 0 / 0.24);
+}
+
+.vc-upload-editor-icon-button:disabled {
+    opacity: 0.35;
+    cursor: default;
+}
+
+@media (hover: hover) {
+    .vc-upload-editor-segment:not(.vc-upload-editor-segment-active):hover,
+    .vc-upload-editor-icon-button:not(:disabled):hover {
+        background: var(--background-mod-normal, oklch(1 0 0 / 0.08));
+        color: var(--interactive-hover, #dbdee1);
+    }
+}
+
+.vc-upload-editor-dot {
+    border-radius: 50%;
+    background: currentColor;
+}
+
+.vc-upload-editor-swatches {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.vc-upload-editor-swatch {
+    position: relative;
+    width: 28px;
+    height: 28px;
+    padding: 0;
+    border: none;
+    border-radius: 50%;
+    background: transparent;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+    transition: scale 150ms ease-out;
+}
+
+.vc-upload-editor-swatch::before {
+    content: "";
+    position: absolute;
+    inset: 5px;
+    border-radius: 50%;
+    background: currentColor;
+    box-shadow: inset 0 0 0 1px oklch(1 0 0 / 0.2);
+}
+
+.vc-upload-editor-swatch::after {
+    content: "";
+    position: absolute;
+    inset: 1px;
+    border: 2px solid transparent;
+    border-radius: 50%;
+    transition: border-color 150ms ease-out;
+}
+
+.vc-upload-editor-swatch-active::after {
+    border-color: var(--interactive-active, #fff);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+    .vc-upload-editor-segment:active,
+    .vc-upload-editor-icon-button:not(:disabled):active,
+    .vc-upload-editor-swatch:active,
+    .vc-upload-editor-thumb-button:active {
+        scale: 0.96;
+    }
+}
+
+.vc-upload-editor-dimensions {
+    margin-left: auto;
+    color: var(--text-muted, #949ba4);
+    font-size: 12px;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+}
+
+.vc-upload-editor-strip {
+    display: flex;
+    gap: 10px;
+    padding: 6px 2px 2px;
+    overflow-x: auto;
+    overscroll-behavior: contain;
+}
+
+.vc-upload-editor-thumb {
+    position: relative;
+    flex: none;
+}
+
+.vc-upload-editor-thumb-button {
+    display: block;
+    padding: 0;
+    border: none;
+    border-radius: 8px;
+    background: none;
+    cursor: pointer;
+    transition: scale 150ms ease-out;
+}
+
+.vc-upload-editor-thumb-button img {
+    display: block;
+    width: 56px;
+    height: 56px;
+    border-radius: 8px;
+    object-fit: cover;
+    outline: 1px solid oklch(1 0 0 / 0.1);
+    outline-offset: -1px;
+    opacity: 0.55;
+    transition: opacity 150ms ease-out;
+}
+
+.vc-upload-editor-thumb-active .vc-upload-editor-thumb-button img {
+    opacity: 1;
+    outline: 2px solid var(--interactive-active, #fff);
+    outline-offset: 2px;
+}
+
+@media (hover: hover) {
+    .vc-upload-editor-thumb-button:hover img {
+        opacity: 1;
+    }
+}
+
+.vc-upload-editor-remove {
+    position: absolute;
+    top: -6px;
+    right: -6px;
+    display: grid;
+    place-items: center;
+    width: 20px;
+    height: 20px;
+    padding: 0;
+    border: none;
+    border-radius: 50%;
+    background: oklch(0.2 0 0 / 0.9);
+    box-shadow: 0 0 0 1.5px var(--modal-background, var(--background-base-low, #313338));
+    color: #fff;
+    cursor: pointer;
+}
+
+.vc-upload-editor-caption {
+    display: block;
+    width: 100%;
+    min-width: 0;
+    box-sizing: border-box;
+    min-height: 44px;
+    max-height: 132px;
+    padding: 11px 14px;
+    border: 1px solid var(--input-border-default, var(--border-subtle, transparent));
+    border-radius: 8px;
+    background: var(--input-background-default, var(--input-background, oklch(0 0 0 / 0.22)));
+    color: var(--text-default, #dbdee1);
+    font-family: inherit;
+    font-size: 15px;
+    line-height: 20px;
+    resize: none;
+    field-sizing: content;
+    outline: none;
+    transition: border-color 150ms ease-out;
+}
+
+.vc-upload-editor-caption::placeholder {
+    color: var(--input-placeholder-text-default, var(--text-muted, #949ba4));
+}
+
+.vc-upload-editor-caption:focus-visible {
+    border-color: var(--input-border-active, var(--brand-500, #5865f2));
+}
