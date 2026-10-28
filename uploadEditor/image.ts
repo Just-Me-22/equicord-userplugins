@@ -20,8 +20,9 @@ export interface Stroke {
 export interface Item {
     id: number;
     file: File;
-    image: ImageBitmap;
-    thumb: string;
+    preview: ImageBitmap;
+    width: number;
+    height: number;
     crop: Rect;
     strokes: Stroke[];
 }
@@ -32,32 +33,47 @@ export const EDITABLE = new Set(["image/png", "image/jpeg", "image/webp"]);
 
 let nextId = 0;
 
+const PREVIEW_SIDE = 2048;
+
 export async function loadItem(file: File): Promise<Item> {
-    const image = await createImageBitmap(file);
-    return {
-        id: nextId++,
-        file,
-        image,
-        thumb: URL.createObjectURL(file),
-        crop: { x: 0, y: 0, w: image.width, h: image.height },
-        strokes: []
-    };
+    const url = URL.createObjectURL(file);
+    try {
+        const img = new Image();
+        img.src = url;
+        await img.decode();
+
+        const width = img.naturalWidth;
+        const height = img.naturalHeight;
+        const shrink = Math.min(1, PREVIEW_SIDE / Math.max(width, height));
+        const preview = await createImageBitmap(img, {
+            resizeWidth: Math.max(1, Math.round(width * shrink)),
+            resizeHeight: Math.max(1, Math.round(height * shrink)),
+            resizeQuality: "high"
+        });
+
+        return { id: nextId++, file, preview, width, height, crop: { x: 0, y: 0, w: width, h: height }, strokes: [] };
+    } finally {
+        URL.revokeObjectURL(url);
+    }
 }
 
 export function disposeItem(item: Item) {
-    item.image.close();
-    URL.revokeObjectURL(item.thumb);
+    item.preview.close();
+}
+
+export function drawPreview(ctx: CanvasRenderingContext2D, item: Item) {
+    ctx.drawImage(item.preview, 0, 0, item.width, item.height);
 }
 
 const clamp = (value: number, min: number, max: number) => Math.min(Math.max(value, min), max);
 
 export function isEdited(item: Item) {
-    const { crop, image } = item;
-    return item.strokes.length > 0 || crop.x !== 0 || crop.y !== 0 || crop.w !== image.width || crop.h !== image.height;
+    const { crop } = item;
+    return item.strokes.length > 0 || crop.x !== 0 || crop.y !== 0 || crop.w !== item.width || crop.h !== item.height;
 }
 
 export function fitAspect(item: Item, aspect: number): Rect {
-    const { width, height } = item.image;
+    const { width, height } = item;
     let w = width;
     let h = w / aspect;
     if (h > height) {
@@ -145,7 +161,12 @@ export async function exportItem(item: Item): Promise<File> {
 
     const ctx = canvas.getContext("2d")!;
     ctx.translate(-crop.x, -crop.y);
-    ctx.drawImage(item.image, 0, 0);
+    const full = await createImageBitmap(item.file);
+    try {
+        ctx.drawImage(full, 0, 0);
+    } finally {
+        full.close();
+    }
     item.strokes.forEach(stroke => paintStroke(ctx, stroke));
 
     const { type } = item.file;

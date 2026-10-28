@@ -48,3 +48,9 @@ export const CloseIcon = () => (
         <path d="m6 6 12 12" />
     </Icon>
 );
+
+export const BackIcon = () => (
+    <Icon size={16}>
+        <path d="m15 18-6-6 6-6" />
+    </Icon>
+);

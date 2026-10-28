@@ -8,15 +8,14 @@ import "./style.css";
 
 import { Logger } from "@utils/Logger";
 import definePlugin from "@utils/types";
+import { Channel } from "@vencord/discord-types";
 import { DraftType, FluxDispatcher, openModal } from "@webpack/common";
 
 import { EditorModal } from "./EditorModal";
 import { EDITABLE, loadItem } from "./image";
-import { letThrough } from "./tray";
+import { bypassingPrompt, letThrough, promptDirectly } from "./tray";
 
 const logger = new Logger("UploadEditor");
-
-const MAX_ATTACHMENTS = 10;
 
 interface QueuedUpload {
     file?: File;
@@ -46,12 +45,25 @@ async function openEditor(channelId: string, files: File[]) {
     }
 }
 
+function beforePrompt(files: ArrayLike<File>, channel: Channel, draftType: number) {
+    if (bypassingPrompt() || shiftHeld || draftType !== DraftType.ChannelMessage) return false;
+
+    const all = Array.from(files);
+    const images = all.filter(file => EDITABLE.has(file.type));
+    if (!images.length) return false;
+
+    const others = all.filter(file => !EDITABLE.has(file.type));
+    if (others.length) void promptDirectly(others, channel, draftType);
+    void openEditor(channel.id, images);
+    return true;
+}
+
 function intercept(action: AddFilesAction) {
     if (action.type !== "UPLOAD_ATTACHMENT_ADD_FILES" || shiftHeld) return false;
     if (action.draftType !== DraftType.ChannelMessage || !Array.isArray(action.files)) return false;
 
     const images = action.files.filter(isEditable);
-    if (!images.length || images.length > MAX_ATTACHMENTS || letThrough(images.length)) return false;
+    if (!images.length || letThrough(images.length)) return false;
 
     action.files = action.files.filter(entry => !isEditable(entry));
     setTimeout(() => openEditor(action.channelId, images.map(entry => entry.file!)));
@@ -64,6 +76,18 @@ export default definePlugin({
     description: "Opens pictures you upload in a preview where you can crop, draw and add a caption before sending.",
     authors: [{ name: "heart_menace", id: 281162701303185408n }],
     tags: ["Chat", "Media"],
+
+    patches: [
+        {
+            find: "Unexpected mismatch between files and file metadata",
+            replacement: {
+                match: /(async function \i\((\i),(\i),(\i)\)\{)(let\{filesMetadata)/,
+                replace: "$1if($self.beforePrompt($2,$3,$4))return;$5"
+            }
+        }
+    ],
+
+    beforePrompt,
 
     start() {
         FluxDispatcher.addInterceptor(intercept);
