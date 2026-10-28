@@ -6,6 +6,7 @@ Telegram does it. Crop it, draw on it, write a caption, and send it straight fro
 - **Crop** with corner and edge handles, free or locked to Original, 1:1, 4:3 or 16:9
 - **Draw** in seven colours and three brush sizes, with undo
 - **Caption** goes out with the picture. Enter sends, Shift+Enter is a new line
+- **Add to message** puts the edited pictures in Discord's upload tray instead of sending, so they go out with what you have typed. If the message box already has text, this is the main button
 - **Several pictures** at once get a strip to switch between them, and all go in one message
 - **Replies** still work. Pick a message to reply to first and the pictures go as that reply
 

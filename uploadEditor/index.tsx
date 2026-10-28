@@ -12,6 +12,7 @@ import { DraftType, FluxDispatcher, openModal } from "@webpack/common";
 
 import { EditorModal } from "./EditorModal";
 import { EDITABLE, loadItem } from "./image";
+import { letThrough } from "./tray";
 
 const logger = new Logger("UploadEditor");
 
@@ -50,7 +51,7 @@ function intercept(action: AddFilesAction) {
     if (action.draftType !== DraftType.ChannelMessage || !Array.isArray(action.files)) return false;
 
     const images = action.files.filter(isEditable);
-    if (!images.length || images.length > MAX_ATTACHMENTS) return false;
+    if (!images.length || images.length > MAX_ATTACHMENTS || letThrough(images.length)) return false;
 
     action.files = action.files.filter(entry => !isEditable(entry));
     setTimeout(() => openEditor(action.channelId, images.map(entry => entry.file!)));

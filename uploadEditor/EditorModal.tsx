@@ -5,14 +5,15 @@
  */
 
 import { classNameFactory } from "@utils/css";
-import { sendMessage } from "@utils/discord";
+import { insertTextIntoChatInputBox, sendMessage } from "@utils/discord";
 import { Logger } from "@utils/Logger";
 import { RenderModalProps } from "@vencord/discord-types";
 import { CloudUploadPlatform } from "@vencord/discord-types/enums";
-import { CloudUploader, FluxDispatcher, MessageActions, Modal, PendingReplyStore, React, showToast, useEffect, useLayoutEffect, useRef, useState } from "@webpack/common";
+import { CloudUploader, DraftStore, DraftType, FluxDispatcher, MessageActions, Modal, PendingReplyStore, React, showToast, useEffect, useLayoutEffect, useRef, useState } from "@webpack/common";
 
 import { CloseIcon, CropIcon, PenIcon, ResetIcon, UndoIcon } from "./icons";
 import { disposeItem, exportItem, fitAspect, Handle, Item, moveCrop, paintStroke, Rect, resizeCrop, Stroke } from "./image";
+import { addToTray } from "./tray";
 
 export const cl = classNameFactory("vc-upload-editor-");
 
@@ -82,6 +83,7 @@ export function EditorModal({ modalProps, channelId, initial }: { modalProps: Re
     const [size, setSize] = useState<number>(SIZES[1][0]);
     const [caption, setCaption] = useState("");
     const [sending, setSending] = useState(false);
+    const [hasDraft] = useState(() => Boolean(DraftStore.getDraft(channelId, DraftType.ChannelMessage)?.trim()));
     const [dragging, setDragging] = useState(false);
 
     const stageRef = useRef<HTMLDivElement>(null);
@@ -206,19 +208,28 @@ export function EditorModal({ modalProps, channelId, initial }: { modalProps: Re
         setIndex(current => Math.max(0, Math.min(current, items.length - 2)));
     }
 
-    async function send() {
+    async function finish(how: "send" | "attach") {
         if (sending) return;
         setSending(true);
         try {
             const files = await Promise.all(items.map(exportItem));
-            sendFiles(channelId, files, caption.trim());
+            const text = caption.trim();
+
+            if (how === "send") {
+                sendFiles(channelId, files, text);
+            } else {
+                await addToTray(channelId, files);
+                if (text) insertTextIntoChatInputBox((hasDraft ? " " : "") + text);
+            }
             modalProps.onClose();
         } catch (err) {
-            logger.error("could not send", err);
-            showToast("Could not send the pictures", "failure");
+            logger.error(`could not ${how}`, err);
+            showToast(how === "send" ? "Could not send the pictures" : "Could not add the pictures", "failure");
             setSending(false);
         }
     }
+
+    const primary = hasDraft ? "attach" : "send";
 
     const toggle = (target: Mode) => setMode(current => current === target ? "view" : target);
     const box = item.crop;
@@ -241,12 +252,13 @@ export function EditorModal({ modalProps, channelId, initial }: { modalProps: Re
                     onKeyDown={event => {
                         if (event.key !== "Enter" || event.shiftKey || event.nativeEvent.isComposing) return;
                         event.preventDefault();
-                        void send();
+                        void finish(primary);
                     }}
                 />
             }
             actions={[
-                { text: "Send", variant: "primary", onClick: () => void send(), loading: sending },
+                { text: primary === "send" ? "Send" : "Add to message", variant: "primary", onClick: () => void finish(primary), loading: sending },
+                { text: primary === "send" ? "Add to message" : "Send now", variant: "secondary", disabled: sending, onClick: () => void finish(primary === "send" ? "attach" : "send") },
                 { text: "Cancel", variant: "secondary", onClick: modalProps.onClose }
             ]}
         >
