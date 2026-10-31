@@ -3,7 +3,7 @@
 My plugins for an Equicord source build. They belong in `src/userplugins` of an
 Equicord checkout, which the Equicord repo itself gitignores.
 
-Ten plugins are tracked here directly. Eight others have their own repos and are
+Eleven plugins are tracked here directly. Eight others have their own repos and are
 ignored by this one, so nothing lives in two places at once.
 
 ## On a new machine
