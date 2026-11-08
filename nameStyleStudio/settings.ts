@@ -13,6 +13,12 @@ export const settings = definePluginSettings({
         description: "",
         default: [] as [number, number][]
     },
+    alwaysAnimateNames: {
+        type: OptionType.BOOLEAN,
+        description: "Keep display name effects moving everywhere, not only when you hover a name. Discord's reduced motion setting still stops them",
+        default: true,
+        restartNeeded: true
+    },
     movingGradient: {
         type: OptionType.BOOLEAN,
         description: "Make Gradient display names scroll like Prism (only you see this)",

@@ -19,6 +19,7 @@ import { Studio, StudioProps } from "./Studio";
 import { ThemeStudioLauncher, ThemeStudioProps } from "./ThemeStudio";
 
 const GRADIENT = 2;
+const STATIC_NAME = 1;
 
 export default definePlugin({
     name: "NameStyleStudio",
@@ -27,6 +28,14 @@ export default definePlugin({
     settings,
 
     patches: [
+        {
+            find: 'location:"UserNameWithEffects"',
+            predicate: () => settings.store.alwaysAnimateNames,
+            replacement: {
+                match: /(\i)=(\i)===(\i\.\i)\.ANIMATED&&!(\i),(\i=\(0,\i\.jsx\)\("div",\{className:\i\(\)\(\i\.\i,\i,\i,\{\[\i\.\i\]:\i,\[\i\.\i\]:\1,\[\i\.\i\]:)(\i)/,
+                replace: "$1=($2===$3.ANIMATED||$self.alwaysAnimate($2))&&!$4,$5$6||$self.alwaysAnimate($2)"
+            }
+        },
         {
             find: 'location:"UserNameWithEffects"',
             predicate: () => settings.store.movingGradient,
@@ -129,6 +138,8 @@ export default definePlugin({
     effectGallery,
     frameGallery,
     nameplateGallery,
+
+    alwaysAnimate: (displayType: number) => displayType === STATIC_NAME,
 
     gradientPrism(effectId: number, colors: string[] | undefined, nameLength: number) {
         if (effectId !== GRADIENT || !colors?.length) return {};
