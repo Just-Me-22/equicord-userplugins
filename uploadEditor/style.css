@@ -447,3 +447,386 @@
     transition-duration: 150ms;
     transition-timing-function: ease-out;
 }
+
+.vc-upload-editor-tile-badges {
+    position: absolute;
+    left: 8px;
+    bottom: 8px;
+    display: flex;
+    gap: 4px;
+    pointer-events: none;
+}
+
+.vc-upload-editor-tile-badges .vc-upload-editor-tile-badge {
+    position: static;
+}
+
+.vc-upload-editor-tile-spoiler canvas {
+    filter: blur(14px);
+    transform: scale(1.08);
+}
+
+.vc-upload-editor-tile-action-on {
+    background: var(--brand-500, #5865f2);
+}
+
+.vc-upload-editor-tile-action-text {
+    width: auto;
+    padding: 0 9px;
+    border-radius: 15px;
+    font-size: 11px;
+    font-weight: 700;
+}
+
+.vc-upload-editor-tile-alt {
+    position: absolute;
+    left: 8px;
+    right: 8px;
+    top: 46px;
+    box-sizing: border-box;
+    padding: 6px 10px;
+    border: none;
+    border-radius: 8px;
+    background: oklch(0 0 0 / 0.75);
+    color: #fff;
+    font: inherit;
+    font-size: 13px;
+    outline: none;
+}
+
+.vc-upload-editor-hidden-video {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    opacity: 0;
+    pointer-events: none;
+}
+
+.vc-upload-editor-frame-spoiler canvas {
+    filter: blur(20px);
+}
+
+.vc-upload-editor-overlay {
+    position: absolute;
+    border-radius: 4px;
+    cursor: move;
+    touch-action: none;
+}
+
+.vc-upload-editor-overlay-active {
+    outline: 1.5px dashed #fff;
+    outline-offset: 3px;
+    box-shadow: 0 0 0 1px oklch(0 0 0 / 0.5);
+}
+
+.vc-upload-editor-overlay-idle {
+    pointer-events: none;
+}
+
+.vc-upload-editor-finding {
+    position: absolute;
+    padding: 0;
+    border: 1.5px dashed oklch(1 0 0 / 0.75);
+    border-radius: 4px;
+    background: transparent;
+    cursor: pointer;
+    transition: background-color 150ms ease-out, border-color 150ms ease-out;
+}
+
+.vc-upload-editor-finding-on {
+    border-style: solid;
+    border-color: var(--brand-500, #5865f2);
+    background: oklch(0.55 0.2 270 / 0.35);
+}
+
+.vc-upload-editor-crop-circle::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border: 1.5px dashed oklch(1 0 0 / 0.85);
+    border-radius: 50%;
+    pointer-events: none;
+}
+
+.vc-upload-editor-compare-tag {
+    position: absolute;
+    top: 12px;
+    right: 12px;
+    padding: 4px 10px;
+    border-radius: 999px;
+    background: oklch(0 0 0 / 0.6);
+    color: #fff;
+    font-size: 12px;
+    font-weight: 600;
+    pointer-events: none;
+}
+
+.vc-upload-editor-media-bar {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.vc-upload-editor-timeline {
+    display: flex;
+    flex: 1;
+    align-items: center;
+    gap: 10px;
+    min-width: 0;
+}
+
+.vc-upload-editor-time {
+    flex: none;
+    color: var(--text-muted, #949ba4);
+    font-size: 12px;
+    font-variant-numeric: tabular-nums;
+}
+
+.vc-upload-editor-track {
+    position: relative;
+    flex: 1;
+    height: 30px;
+    border-radius: 8px;
+    background: oklch(1 0 0 / 0.06);
+    cursor: pointer;
+    touch-action: none;
+}
+
+.vc-upload-editor-track-dim {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    border-radius: 8px;
+    background: oklch(0 0 0 / 0.45);
+}
+
+.vc-upload-editor-track-range {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    box-sizing: border-box;
+    border: 2px solid var(--brand-500, #5865f2);
+    border-radius: 8px;
+    pointer-events: none;
+}
+
+.vc-upload-editor-playhead {
+    position: absolute;
+    top: -3px;
+    bottom: -3px;
+    width: 2px;
+    margin-left: -1px;
+    border-radius: 1px;
+    background: #fff;
+    box-shadow: 0 0 0 1px oklch(0 0 0 / 0.4);
+    pointer-events: none;
+}
+
+.vc-upload-editor-trim-handle {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: 12px;
+    margin-left: -6px;
+    border-radius: 4px;
+    background: var(--brand-500, #5865f2);
+    cursor: ew-resize;
+}
+
+.vc-upload-editor-trim-handle::after {
+    content: "";
+    position: absolute;
+    left: 5px;
+    top: 9px;
+    bottom: 9px;
+    width: 2px;
+    border-radius: 1px;
+    background: oklch(1 0 0 / 0.8);
+}
+
+.vc-upload-editor-trim-handle:focus-visible {
+    outline: 2px solid #fff;
+    outline-offset: 1px;
+}
+
+.vc-upload-editor-toolbar-sub {
+    min-height: 32px;
+}
+
+.vc-upload-editor-toolbar-wrap {
+    row-gap: 10px;
+}
+
+.vc-upload-editor-options-end {
+    margin-left: auto;
+}
+
+.vc-upload-editor-note {
+    color: var(--text-muted, #949ba4);
+    font-size: 12px;
+}
+
+.vc-upload-editor-icon-button-on {
+    background: var(--background-mod-strong, oklch(1 0 0 / 0.14));
+    color: var(--interactive-active, #fff);
+}
+
+.vc-upload-editor-alt-button {
+    height: 32px;
+    padding: 0 10px;
+    border: none;
+    border-radius: 8px;
+    background: transparent;
+    color: var(--interactive-normal, #b5bac1);
+    font-size: 12px;
+    font-weight: 800;
+    cursor: pointer;
+    transition: background-color 150ms ease-out, color 150ms ease-out;
+}
+
+.vc-upload-editor-alt-input,
+.vc-upload-editor-text-input {
+    flex: 1;
+    min-width: 160px;
+    height: 34px;
+    box-sizing: border-box;
+    padding: 0 12px;
+    border: 1px solid var(--border-subtle, oklch(1 0 0 / 0.1));
+    border-radius: 8px;
+    background: var(--input-background, oklch(0 0 0 / 0.2));
+    color: var(--text-normal, #dbdee1);
+    font: inherit;
+    font-size: 14px;
+    outline: none;
+}
+
+.vc-upload-editor-alt-input:focus,
+.vc-upload-editor-text-input:focus {
+    border-color: var(--brand-500, #5865f2);
+}
+
+.vc-upload-editor-pill {
+    height: 30px;
+    padding: 0 12px;
+    border: 1px solid var(--border-subtle, oklch(1 0 0 / 0.1));
+    border-radius: 999px;
+    background: var(--background-mod-subtle, oklch(1 0 0 / 0.05));
+    color: var(--text-normal, #dbdee1);
+    font: inherit;
+    font-size: 13px;
+    font-weight: 600;
+    white-space: nowrap;
+    cursor: pointer;
+    transition-property: background-color, border-color, scale;
+    transition-duration: 150ms;
+    transition-timing-function: ease-out;
+}
+
+.vc-upload-editor-pill-on {
+    border-color: var(--brand-500, #5865f2);
+    background: oklch(0.55 0.2 270 / 0.25);
+}
+
+.vc-upload-editor-pill-quiet {
+    border-color: transparent;
+    background: transparent;
+}
+
+.vc-upload-editor-pill:disabled {
+    opacity: 0.5;
+    cursor: default;
+}
+
+.vc-upload-editor-stickers,
+.vc-upload-editor-presets {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    width: 100%;
+}
+
+.vc-upload-editor-sticker {
+    display: grid;
+    place-items: center;
+    width: 34px;
+    height: 34px;
+    padding: 0;
+    border: none;
+    border-radius: 8px;
+    background: transparent;
+    font-size: 20px;
+    cursor: pointer;
+    transition-property: background-color, scale;
+    transition-duration: 150ms;
+    transition-timing-function: ease-out;
+}
+
+.vc-upload-editor-slider {
+    display: flex;
+    flex: 1 1 200px;
+    align-items: center;
+    gap: 10px;
+    color: var(--text-muted, #949ba4);
+    font-size: 12px;
+    font-weight: 600;
+}
+
+.vc-upload-editor-slider span:first-child {
+    width: 70px;
+}
+
+.vc-upload-editor-slider input {
+    flex: 1;
+    min-width: 80px;
+}
+
+.vc-upload-editor-slider-value {
+    width: 32px;
+    font-variant-numeric: tabular-nums;
+    text-align: right;
+}
+
+.vc-upload-editor-status {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+.vc-upload-editor-warning {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px 12px;
+    padding: 10px 12px;
+    border: 1px solid oklch(0.75 0.15 70 / 0.5);
+    border-radius: 10px;
+    background: oklch(0.75 0.15 70 / 0.12);
+    color: var(--text-normal, #dbdee1);
+    font-size: 13px;
+}
+
+.vc-upload-editor-warning span {
+    flex: 1 1 240px;
+}
+
+.vc-upload-editor-pill:not(:disabled):active,
+.vc-upload-editor-sticker:active,
+.vc-upload-editor-alt-button:active {
+    scale: 0.96;
+}
+
+@media (hover: hover) {
+    .vc-upload-editor-pill:not(:disabled):hover,
+    .vc-upload-editor-sticker:hover,
+    .vc-upload-editor-alt-button:hover {
+        background: var(--background-mod-normal, oklch(1 0 0 / 0.08));
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .vc-upload-editor-pill:not(:disabled):active,
+    .vc-upload-editor-sticker:active,
+    .vc-upload-editor-alt-button:active {
+        scale: 1;
+    }
+}

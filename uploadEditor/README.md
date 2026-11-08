@@ -1,21 +1,30 @@
 # UploadEditor
 
-Paste, drop or attach a picture and it opens in a preview before anything uploads, the way
-Telegram does it. Crop it, draw on it, write a caption, and send it straight from there.
+Paste, drop or attach a picture, GIF or video and it opens in an editor before anything uploads,
+the way Telegram does it. Edit it, write a caption, and send it straight from there.
 
-- **Crop** with corner and edge handles, free or locked to Original, 1:1, 4:3 or 16:9
-- **Draw** in seven colours and three brush sizes, with undo
-- **Caption** goes out with the picture. Enter sends, Shift+Enter is a new line
-- **Add to message** puts the edited pictures in Discord's upload tray instead of sending, so they go out with what you have typed. If the message box already has text, this is the main button
-- **Several pictures** open as an album grid, the way Telegram shows them. Click one to crop or draw on it; each tile shows your edits
-- **More than ten** is fine. Discord allows ten per message, so they go out as several messages in order, with the caption on the first
-- **Replies** still work. Pick a message to reply to first and the pictures go as that reply
+- **Crop** with corner and edge handles, free or locked to Original, 1:1, 4:3 or 16:9, plus profile
+  sizes (avatar and server icon with a circle guide, banner 680×240, emoji 128, sticker 320)
+- **Trim GIFs and videos** on a timeline, change the speed (0.5× to 2×), and play GIFs reversed or
+  as a boomerang
+- **Draw** in seven colours, or **blur** and **pixelate** with the same brush
+- **Find text** marks text in a screenshot so you can blur it in one click
+- **Text and stickers** you can drag around, with five fonts, colours and an outline
+- **Adjust** brightness, contrast, saturation and warmth, or pick a look (Vivid, Warm, Cool, Fade,
+  Mono, Noir)
+- **Save a frame** from a GIF or video as a picture in the same album
+- **Hold the eye button** to see the original, and **undo** any step (Ctrl+Z)
+- **Spoiler and alt text** for each file, in the editor or on the album tiles
+- **Too big?** Before sending it checks your upload limit and offers to shrink the file to fit
+- **Several files** open as an album grid; more than ten go out as several messages in order
+- **Add to message** puts the edited files in Discord's upload tray instead of sending
+- **Replies** still work
 
 Hold **Shift** while pasting or dropping to skip the editor and upload the normal way.
 
-PNG, JPEG and WebP open in the editor. GIFs and other files upload as usual. A picture you
-leave untouched is sent as the original file; only edited ones are re-encoded, in the same
-format.
+A file you leave untouched is sent as the original. Edited pictures keep their format, edited GIFs
+are re-encoded as GIFs, and edited videos are saved as WebM (VP9 or VP8 with Opus sound). Sound is
+kept when the video plays forward at 1×.
 
 ## Install
 
@@ -44,6 +53,8 @@ tray and never re-triggers the interceptor.
 
 **Crops and strokes are stored in the picture's own pixels.** The canvas only ever draws at
 display size, so a large picture stays cheap to edit, and export draws once at full size.
+
+**GIFs and videos are re-encoded inside the plugin.** GIF frames are read with `ImageDecoder` and written by a small encoder in `media/gif.ts` (median-cut palette per frame, LZW). Videos are stepped frame by frame through a `<video>` element, encoded with WebCodecs, and packed by the WebM writer in `media/webm.ts`; audio comes from `decodeAudioData` and goes through `AudioEncoder` as Opus.
 
 **The caption is sent as plain text.** `@name` and `:emoji:` are not converted the way the
 message box converts them.

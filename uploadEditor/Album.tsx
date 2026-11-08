@@ -4,10 +4,11 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
-import { useLayoutEffect, useRef } from "@webpack/common";
+import { useLayoutEffect, useRef, useState } from "@webpack/common";
 
-import { CloseIcon, PenIcon } from "./icons";
-import { drawPreview, isEdited, Item, paintStroke } from "./image";
+import { CloseIcon, PenIcon, SpoilerIcon } from "./icons";
+import { formatTime, isEdited, Item } from "./image";
+import { renderEdits } from "./render";
 import { cl, useSize } from "./ui";
 
 const GAP = 4;
@@ -43,8 +44,9 @@ function arrange(items: Item[], width: number): Row[] {
     return rows;
 }
 
-function Tile({ item, width, height, onOpen, onRemove }: { item: Item; width: number; height: number; onOpen(): void; onRemove(): void; }) {
+function Tile({ item, width, height, onOpen, onRemove, onChange }: { item: Item; width: number; height: number; onOpen(): void; onRemove(): void; onChange(patch: Partial<Item>): void; }) {
     const canvasRef = useRef<HTMLCanvasElement>(null);
+    const [alt, setAlt] = useState(false);
 
     useLayoutEffect(() => {
         const canvas = canvasRef.current;
@@ -61,25 +63,35 @@ function Tile({ item, width, height, onOpen, onRemove }: { item: Item; width: nu
 
         const ctx = canvas.getContext("2d")!;
         ctx.setTransform(scale, 0, 0, scale, offsetX - crop.x * scale, offsetY - crop.y * scale);
-        drawPreview(ctx, item);
-        item.strokes.forEach(stroke => paintStroke(ctx, stroke));
+        renderEdits(ctx, item, item.preview);
     }, [item, width, height]);
 
+    const badge = item.kind === "gif" ? "GIF" : item.kind === "video" ? formatTime((item.trim[1] - item.trim[0]) / item.speed) : null;
+
     return (
-        <div className={cl("tile")} style={{ width, height }}>
+        <div className={cl("tile", { "tile-spoiler": item.spoiler })} style={{ width, height }}>
             <button className={cl("tile-open")} aria-label={`Edit ${item.file.name}`} onClick={onOpen}>
                 <canvas ref={canvasRef} style={{ width, height }} />
             </button>
-            {isEdited(item) && <span className={cl("tile-badge")}>Edited</span>}
+            <span className={cl("tile-badges")}>
+                {badge && <span className={cl("tile-badge")}>{badge}</span>}
+                {isEdited(item) && <span className={cl("tile-badge")}>Edited</span>}
+                {item.alt && <span className={cl("tile-badge")}>ALT</span>}
+            </span>
             <div className={cl("tile-actions")}>
+                <button className={cl("tile-action", { "tile-action-on": item.spoiler })} aria-pressed={item.spoiler} aria-label="Spoiler" title="Spoiler" onClick={() => onChange({ spoiler: !item.spoiler })}><SpoilerIcon /></button>
+                <button className={cl("tile-action", "tile-action-text")} aria-expanded={alt} aria-label="Alt text" title="Alt text" onClick={() => setAlt(!alt)}>ALT</button>
                 <button className={cl("tile-action")} aria-label={`Edit ${item.file.name}`} onClick={onOpen}><PenIcon /></button>
                 <button className={cl("tile-action")} aria-label={`Remove ${item.file.name}`} onClick={onRemove}><CloseIcon /></button>
             </div>
+            {alt && (
+                <input className={cl("tile-alt")} value={item.alt} maxLength={1024} placeholder="Describe this" autoFocus onChange={e => onChange({ alt: e.currentTarget.value })} onKeyDown={e => { if (e.key === "Enter") setAlt(false); }} />
+            )}
         </div>
     );
 }
 
-export function Album({ items, onOpen, onRemove }: { items: Item[]; onOpen(index: number): void; onRemove(item: Item): void; }) {
+export function Album({ items, onOpen, onRemove, onChange }: { items: Item[]; onOpen(index: number): void; onRemove(item: Item): void; onChange(id: number, patch: Partial<Item>): void; }) {
     const ref = useRef<HTMLDivElement>(null);
     const { width } = useSize(ref);
     const rows = width ? arrange(items, width) : [];
@@ -96,6 +108,7 @@ export function Album({ items, onOpen, onRemove }: { items: Item[]; onOpen(index
                             height={row.height}
                             onOpen={() => onOpen(items.indexOf(item))}
                             onRemove={() => onRemove(item)}
+                            onChange={patch => onChange(item.id, patch)}
                         />
                     ))}
                 </div>

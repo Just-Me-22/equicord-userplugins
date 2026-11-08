@@ -9,10 +9,10 @@ import "./style.css";
 import { Logger } from "@utils/Logger";
 import definePlugin from "@utils/types";
 import { Channel } from "@vencord/discord-types";
-import { DraftType, FluxDispatcher, openModal } from "@webpack/common";
+import { ChannelStore, DraftType, FluxDispatcher, openModal } from "@webpack/common";
 
 import { EditorModal } from "./EditorModal";
-import { EDITABLE, loadItem } from "./image";
+import { isEditableType, loadItem } from "./image";
 import { bypassingPrompt, letThrough, promptDirectly } from "./tray";
 
 const logger = new Logger("UploadEditor");
@@ -34,25 +34,28 @@ let shiftHeld = false;
 const trackShift = (event: KeyboardEvent) => { shiftHeld = event.shiftKey; };
 const releaseShift = () => { shiftHeld = false; };
 
-const isEditable = (entry: QueuedUpload) => entry.file instanceof File && !entry.isThumbnail && EDITABLE.has(entry.file.type);
+const isEditable = (entry: QueuedUpload) => entry.file instanceof File && !entry.isThumbnail && isEditableType(entry.file.type);
 
 async function openEditor(channelId: string, files: File[]) {
-    try {
-        const items = await Promise.all(files.map(loadItem));
-        openModal(props => <EditorModal modalProps={props} channelId={channelId} initial={items} />);
-    } catch (err) {
-        logger.error("could not open the editor", err);
+    const loaded = await Promise.allSettled(files.map(loadItem));
+    const items = loaded.flatMap(r => r.status === "fulfilled" ? [r.value] : []);
+    const failed = files.filter((_, i) => loaded[i].status === "rejected");
+    if (failed.length) {
+        logger.warn("could not open some files in the editor", loaded.filter(r => r.status === "rejected"));
+        const channel = ChannelStore.getChannel(channelId);
+        if (channel) void promptDirectly(failed, channel, DraftType.ChannelMessage);
     }
+    if (items.length) openModal(props => <EditorModal modalProps={props} channelId={channelId} initial={items} />);
 }
 
 function beforePrompt(files: ArrayLike<File>, channel: Channel, draftType: number) {
     if (bypassingPrompt() || shiftHeld || draftType !== DraftType.ChannelMessage) return false;
 
     const all = Array.from(files);
-    const images = all.filter(file => EDITABLE.has(file.type));
+    const images = all.filter(file => isEditableType(file.type));
     if (!images.length) return false;
 
-    const others = all.filter(file => !EDITABLE.has(file.type));
+    const others = all.filter(file => !isEditableType(file.type));
     if (others.length) void promptDirectly(others, channel, draftType);
     void openEditor(channel.id, images);
     return true;
@@ -73,7 +76,7 @@ function intercept(action: AddFilesAction) {
 
 export default definePlugin({
     name: "UploadEditor",
-    description: "Opens pictures you upload in a preview where you can crop, draw and add a caption before sending.",
+    description: "Opens pictures, GIFs and videos you upload in an editor: crop, trim, draw, blur, add text and stickers, adjust colours, then send.",
     authors: [{ name: "heart_menace", id: 281162701303185408n }],
     tags: ["Chat", "Media"],
 
@@ -81,7 +84,7 @@ export default definePlugin({
         {
             find: "Unexpected mismatch between files and file metadata",
             replacement: {
-                match: /(async function \i\((\i),(\i),(\i)\)\{)(let\{filesMetadata)/,
+                match: /(async function(?: \i)?\((\i),(\i),(\i)\)\{)(let\{filesMetadata)/,
                 replace: "$1if($self.beforePrompt($2,$3,$4))return;$5"
             }
         }
