@@ -117,7 +117,7 @@ export function GestureEditor() {
     return (
         <div className="vc-mg-editor">
             <div className="vc-mg-editor-head">
-                <span>Drag from empty space to draw. Message gestures run when you start on a message, and the others run anywhere, so one gesture can do both.</span>
+                <span>Drag from empty space to draw. On a message, hold Alt and drag from anywhere on it, and the Messages gestures act on that message. The other gestures run anywhere, so one gesture can do both.</span>
                 <button className="vc-mg-button" onClick={() => settings.store.bindings = { ...DEFAULT_BINDINGS }}>Reset</button>
             </div>
             {GROUPS.map(group => (

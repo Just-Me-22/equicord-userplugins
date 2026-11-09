@@ -8,7 +8,7 @@ import "./style.css";
 
 import definePlugin from "@utils/types";
 
-import { Hit, messageAt, onMessages, resolve } from "./actions";
+import { Hit, MESSAGE_SELECTOR, messageAt, onMessages, resolve } from "./actions";
 import { closeOverlay, drawOverlay, openOverlay } from "./overlay";
 import { settings } from "./settings";
 import { Stroke } from "./stroke";
@@ -37,6 +37,14 @@ function stop(e: Event) {
     e.stopImmediatePropagation();
 }
 
+const TEXT_FIELDS = 'input, textarea, [contenteditable="true"], [role="textbox"]';
+
+function startsGesture(e: PointerEvent) {
+    const t = e.target as Element;
+    if (!t.closest?.(MESSAGE_SELECTOR)) return emptySpot(e);
+    return e.altKey && !t.closest(TEXT_FIELDS);
+}
+
 let drag: { x: number; y: number; hit: Hit | null; stroke: Stroke; drawing: boolean; marked: Element | null; } | null = null;
 let swallowClick = false;
 
@@ -62,7 +70,7 @@ function end(run: boolean) {
 function onPointerDown(e: PointerEvent) {
     end(false);
     swallowClick = false;
-    if (e.button !== 0 || !e.isPrimary || !e.isTrusted || !emptySpot(e)) return;
+    if (e.button !== 0 || !e.isPrimary || !e.isTrusted || !startsGesture(e)) return;
     drag = {
         x: e.clientX,
         y: e.clientY,
@@ -86,6 +94,10 @@ function onPointerMove(e: PointerEvent) {
     const action = gesture ? resolve(gesture, drag.hit) : undefined;
     if (changed) mark(action && onMessages(action) ? drag.hit!.element : null);
     drawOverlay(points, e.clientX, e.clientY, gesture, action?.label ?? null);
+}
+
+function onMouseDown(e: MouseEvent) {
+    if (drag && e.altKey && (e.target as Element).closest?.(MESSAGE_SELECTOR)) e.preventDefault();
 }
 
 function onKeyDown(e: KeyboardEvent) {
@@ -152,6 +164,7 @@ function onWheel(e: WheelEvent) {
 const listeners: [string, (e: any) => void][] = [
     ["pointerdown", onPointerDown],
     ["pointermove", onPointerMove],
+    ["mousedown", onMouseDown],
     ["pointerup", () => end(true)],
     ["pointercancel", () => end(false)],
     ["blur", () => end(false)],
@@ -162,7 +175,7 @@ const listeners: [string, (e: any) => void][] = [
 
 export default definePlugin({
     name: "MouseGestures",
-    description: "Drag on empty space to draw a gesture: reply, react, go back, switch tabs and more. Draw your own gestures in the settings",
+    description: "Drag on empty space to draw a gesture: go back, switch tabs and more. On a message, hold Alt and drag anywhere on it to reply, react and so on. Draw your own gestures in the settings",
     authors: [{ name: "heart_menace", id: 281162701303185408n }],
     settings,
 
