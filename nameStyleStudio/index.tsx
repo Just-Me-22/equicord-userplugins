@@ -13,6 +13,7 @@ import type { ReactNode } from "react";
 
 import { renderSection } from "./editor";
 import { decorationGallery, effectGallery, frameGallery, nameplateGallery } from "./galleries";
+import { startNameMotion, stopNameMotion } from "./nameMotion";
 import { startPickers, stopPickers } from "./pickers";
 import { settings } from "./settings";
 import { Studio, StudioProps } from "./Studio";
@@ -131,8 +132,14 @@ export default definePlugin({
         }
     ],
 
-    start: startPickers,
-    stop: stopPickers,
+    start() {
+        startPickers();
+        if (settings.store.alwaysAnimateNames) setTimeout(startNameMotion, 3000);
+    },
+    stop() {
+        stopPickers();
+        stopNameMotion();
+    },
 
     decorationGallery,
     effectGallery,
