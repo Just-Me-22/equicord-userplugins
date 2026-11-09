@@ -1,0 +1,15 @@
+[id^="chat-messages-"],
+[id^="chat-messages-"] * {
+    user-select: none !important;
+}
+
+[id^="chat-messages-"][data-vc-selectable],
+[id^="chat-messages-"][data-vc-selectable] *,
+[id^="chat-messages-"] [contenteditable="true"],
+[id^="chat-messages-"] [contenteditable="true"] * {
+    user-select: text !important;
+}
+
+[id^="chat-messages-"][data-vc-selectable] {
+    box-shadow: inset 3px 0 0 var(--brand-500, #5865f2);
+}
