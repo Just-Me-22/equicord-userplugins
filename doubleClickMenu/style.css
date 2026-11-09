@@ -1,0 +1,82 @@
+.vc-dcm-ring {
+    position: fixed;
+    z-index: 10000;
+    width: 32px;
+    height: 32px;
+    margin: -16px 0 0 -16px;
+    color: var(--brand-500, #5865f2);
+    pointer-events: none;
+}
+
+.vc-dcm-ring svg {
+    display: block;
+    width: 100%;
+    height: 100%;
+    overflow: visible;
+}
+
+.vc-dcm-ring circle {
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 3;
+    stroke-linecap: round;
+    stroke-dasharray: 1;
+    stroke-dashoffset: 0;
+    transform: rotate(-90deg);
+    transform-origin: center;
+    filter: drop-shadow(0 0 1px rgb(0 0 0 / 0.55));
+}
+
+.vc-dcm-charging {
+    animation: vc-dcm-in 120ms ease-out;
+}
+
+.vc-dcm-charging circle {
+    animation: vc-dcm-fill var(--vc-dcm-fill, 400ms) linear forwards;
+}
+
+.vc-dcm-done {
+    animation: vc-dcm-pulse 280ms cubic-bezier(0.23, 1, 0.32, 1) forwards;
+}
+
+.vc-dcm-cancel {
+    opacity: 0;
+    transition: opacity 120ms ease-out;
+}
+
+@keyframes vc-dcm-fill {
+    from { stroke-dashoffset: 1; }
+}
+
+@keyframes vc-dcm-in {
+    from {
+        opacity: 0;
+        scale: 0.9;
+    }
+}
+
+@keyframes vc-dcm-pulse {
+    from {
+        opacity: 1;
+        scale: 0.85;
+    }
+
+    to {
+        opacity: 0;
+        scale: 1.35;
+    }
+}
+
+@keyframes vc-dcm-fade {
+    to { opacity: 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .vc-dcm-charging {
+        animation-name: none;
+    }
+
+    .vc-dcm-done {
+        animation-name: vc-dcm-fade;
+    }
+}
