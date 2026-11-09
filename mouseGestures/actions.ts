@@ -10,9 +10,12 @@ import NoReplyMentionPlugin from "@plugins/noReplyMention";
 import { copyWithToast, insertTextIntoChatInputBox } from "@utils/discord";
 import type { Channel, Message } from "@vencord/discord-types";
 import { MessageFlags } from "@vencord/discord-types/enums";
+import { findByCodeLazy } from "@webpack";
 import { ActiveJoinedThreadsStore, Alerts, ChannelStore, ComponentDispatch, Constants, EditMessageStore, FluxDispatcher, GuildChannelStore, MessageActions, MessageStore, MessageTypeSets, NavigationRouter, PermissionsBits, PermissionStore, PinActions, ReadStateStore, RestAPI, SelectedChannelStore, SelectedGuildStore, SettingsRouter, showToast, UserStore } from "@webpack/common";
 
 import { settings } from "./settings";
+
+const openForward: (args: { message: Message; source: string; }) => void = findByCodeLazy("initialSelectedDestinations:", "forwardOptions:");
 
 export interface Hit {
     element: Element;
@@ -102,6 +105,12 @@ function markUnread({ element }: Hit) {
     target.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true, view: window, detail: 1, altKey: true }));
 }
 
+function openMenu({ element }: Hit) {
+    const target = element.querySelector('[role="article"]') ?? element;
+    const r = target.getBoundingClientRect();
+    target.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true, view: window, button: 2, clientX: r.left + 80, clientY: r.top + 20 }));
+}
+
 function ack(channelIds: string[]) {
     const channels = channelIds
         .filter(id => ReadStateStore.hasUnread(id))
@@ -148,6 +157,9 @@ export const ACTIONS: Action[] = [
     { id: "msg.pin", group: "Messages", label: "Pin or unpin", run: needsMessage(pin) },
     { id: "msg.markUnread", group: "Messages", label: "Mark unread from here", run: needsMessage(markUnread) },
     { id: "msg.thread", group: "Messages", label: "Start a thread", run: needsMessage(({ message, channel }) => FluxDispatcher.dispatch({ type: "OPEN_THREAD_FLOW_MODAL", channelId: channel.id, messageId: message.id })) },
+    { id: "msg.forward", group: "Messages", label: "Forward", run: needsMessage(({ message }) => openForward({ message, source: "message-context-menu" })) },
+    { id: "msg.replyFile", group: "Messages", label: "Reply with a file", run: needsMessage(hit => { reply(hit); ComponentDispatch.dispatch("UPLOAD_FILE", { channelId: hit.channel.id }); }) },
+    { id: "msg.menu", group: "Messages", label: "Open the message's menu", run: needsMessage(openMenu) },
     { id: "msg.delete", group: "Messages", label: "Delete (asks first)", run: needsMessage(remove) },
 
     { id: "nav.back", group: "Getting around", label: "Back", run: () => NavigationRouter.back() },

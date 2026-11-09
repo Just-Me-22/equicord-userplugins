@@ -6,6 +6,7 @@
 
 import "./style.css";
 
+import { isPluginEnabled } from "@api/PluginManager";
 import definePlugin from "@utils/types";
 
 import { Hit, MESSAGE_SELECTOR, messageAt, onMessages, resolve } from "./actions";
@@ -37,12 +38,10 @@ function stop(e: Event) {
     e.stopImmediatePropagation();
 }
 
-const TEXT_FIELDS = 'input, textarea, [contenteditable="true"], [role="textbox"]';
-
 function startsGesture(e: PointerEvent) {
     const t = e.target as Element;
-    if (!t.closest?.(MESSAGE_SELECTOR)) return emptySpot(e);
-    return e.altKey && !t.closest(TEXT_FIELDS);
+    if (t.closest?.(MESSAGE_SELECTOR) && isPluginEnabled("NoMessageSelect") && !t.closest("[data-vc-selectable]")) return !t.closest(BLOCKED);
+    return emptySpot(e);
 }
 
 let drag: { x: number; y: number; hit: Hit | null; stroke: Stroke; drawing: boolean; marked: Element | null; } | null = null;
@@ -94,10 +93,6 @@ function onPointerMove(e: PointerEvent) {
     const action = gesture ? resolve(gesture, drag.hit) : undefined;
     if (changed) mark(action && onMessages(action) ? drag.hit!.element : null);
     drawOverlay(points, e.clientX, e.clientY, gesture, action?.label ?? null);
-}
-
-function onMouseDown(e: MouseEvent) {
-    if (drag && e.altKey && (e.target as Element).closest?.(MESSAGE_SELECTOR)) e.preventDefault();
 }
 
 function onKeyDown(e: KeyboardEvent) {
@@ -164,7 +159,6 @@ function onWheel(e: WheelEvent) {
 const listeners: [string, (e: any) => void][] = [
     ["pointerdown", onPointerDown],
     ["pointermove", onPointerMove],
-    ["mousedown", onMouseDown],
     ["pointerup", () => end(true)],
     ["pointercancel", () => end(false)],
     ["blur", () => end(false)],
@@ -175,7 +169,7 @@ const listeners: [string, (e: any) => void][] = [
 
 export default definePlugin({
     name: "MouseGestures",
-    description: "Drag on empty space to draw a gesture: go back, switch tabs and more. On a message, hold Alt and drag anywhere on it to reply, react and so on. Draw your own gestures in the settings",
+    description: "Drag on empty space to draw a gesture: go back, switch tabs and more. On a message, drag anywhere on it to reply, forward, react and so on. Draw your own gestures in the settings",
     authors: [{ name: "heart_menace", id: 281162701303185408n }],
     settings,
 
