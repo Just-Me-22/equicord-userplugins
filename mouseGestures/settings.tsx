@@ -7,36 +7,154 @@
 import { definePluginSettings } from "@api/Settings";
 import { OptionType } from "@utils/types";
 
-import { GestureEditor, TrailColorPicker } from "./GestureEditor";
+import type { Command } from "./actions";
+import type { Shape } from "./shapes";
+import { StudioLauncher } from "./studio";
 
 export const DEFAULT_BINDINGS: Record<string, string> = {
-    "msg.replyOrEdit": "L",
-    "msg.react": "R",
     "nav.back": "L",
     "nav.forward": "R",
     "nav.oldestUnread": "U",
     "nav.present": "D",
-    "tab.close": "DR"
+    "msg.replyOrEdit": "L",
+    "msg.react": "R",
+    "tab.next": "R",
+    "tab.prev": "L",
+    "tab.close": "D",
+    "tab.reopen": "U",
+    "server.prev": "U",
+    "server.next": "D",
+    "server.home": "L",
+    "server.markRead": "3",
+    "channel.prev": "U",
+    "channel.next": "D",
+    "channel.newTab": "R",
+    "channel.markRead": "3",
+    "person.dm": "R",
+    "person.mention": "L",
+    "person.profile": "U"
 };
 
+export const DEFAULTS_VERSION = 3;
+
 export const settings = definePluginSettings({
-    editor: {
+    studio: {
         type: OptionType.COMPONENT,
-        component: () => <GestureEditor />
+        component: () => <StudioLauncher />
     },
     bindings: {
         type: OptionType.CUSTOM,
         description: "",
         default: DEFAULT_BINDINGS
     },
+    shapes: {
+        type: OptionType.CUSTOM,
+        description: "",
+        default: [] as Shape[]
+    },
+    commands: {
+        type: OptionType.CUSTOM,
+        description: "",
+        default: [] as Command[]
+    },
+    options: {
+        type: OptionType.CUSTOM,
+        description: "",
+        default: {} as Record<string, Record<string, any>>
+    },
+    trailOpacity: {
+        type: OptionType.CUSTOM,
+        description: "",
+        default: 100
+    },
+    trailGlow: {
+        type: OptionType.CUSTOM,
+        description: "",
+        default: 0
+    },
+    trailCap: {
+        type: OptionType.CUSTOM,
+        description: "",
+        default: "round"
+    },
+    trailTaper: {
+        type: OptionType.CUSTOM,
+        description: "",
+        default: false
+    },
+    tailLength: {
+        type: OptionType.CUSTOM,
+        description: "",
+        default: 48
+    },
+    fadeOut: {
+        type: OptionType.CUSTOM,
+        description: "",
+        default: 300
+    },
+    matchColor: {
+        type: OptionType.CUSTOM,
+        description: "",
+        default: ""
+    },
+    pillPos: {
+        type: OptionType.CUSTOM,
+        description: "",
+        default: "cursor"
+    },
+    trailColor2: {
+        type: OptionType.CUSTOM,
+        description: "",
+        default: "#c084fc"
+    },
+    defaultsVersion: {
+        type: OptionType.CUSTOM,
+        description: "",
+        default: 1
+    },
+    diagonals: {
+        type: OptionType.CUSTOM,
+        description: "",
+        default: true
+    },
+    stepSize: {
+        type: OptionType.CUSTOM,
+        description: "",
+        default: 30
+    },
+    startDistance: {
+        type: OptionType.CUSTOM,
+        description: "",
+        default: 16
+    },
+    holdToMove: {
+        type: OptionType.CUSTOM,
+        description: "",
+        default: 600
+    },
+    readyRing: {
+        type: OptionType.CUSTOM,
+        description: "",
+        default: true
+    },
+    cheatSheet: {
+        type: OptionType.CUSTOM,
+        description: "",
+        default: true
+    },
+    cheatDelay: {
+        type: OptionType.CUSTOM,
+        description: "",
+        default: 600
+    },
     reactEmoji: {
-        type: OptionType.STRING,
-        description: "The emoji the react gesture adds, or takes away if it's already yours. For a server emoji use name:id",
+        type: OptionType.CUSTOM,
+        description: "",
         default: "💀"
     },
     trail: {
-        type: OptionType.BOOLEAN,
-        description: "Draw the gesture's trail and show which action it will run while you drag. The trail turns grey and dashed while the gesture matches nothing",
+        type: OptionType.CUSTOM,
+        description: "",
         default: true
     },
     trailColor: {
@@ -44,27 +162,34 @@ export const settings = definePluginSettings({
         description: "",
         default: ""
     },
-    trailColorPicker: {
-        type: OptionType.COMPONENT,
-        component: () => <TrailColorPicker />
+    trailStyle: {
+        type: OptionType.CUSTOM,
+        description: "",
+        default: "solid"
     },
-    stepSize: {
-        type: OptionType.SLIDER,
-        description: "How far you drag before a direction counts, in pixels. Lower is more sensitive, higher forgives wobbly lines",
-        markers: [15, 20, 25, 30, 40, 50],
-        default: 25,
-        stickToMarkers: false
+    trailFade: {
+        type: OptionType.CUSTOM,
+        description: "",
+        default: "full"
+    },
+    trailWidth: {
+        type: OptionType.CUSTOM,
+        description: "",
+        default: 4
+    },
+    sound: {
+        type: OptionType.CUSTOM,
+        description: "",
+        default: false
     },
     twoFingerSwipes: {
-        type: OptionType.BOOLEAN,
-        description: "Two-finger swipes sideways on the touchpad run the → and ← gestures, sliding the message along like on the phone app",
+        type: OptionType.CUSTOM,
+        description: "",
         default: false
     },
     swipeDistance: {
-        type: OptionType.SLIDER,
-        description: "How far a two-finger swipe has to travel",
-        markers: [60, 90, 120, 160, 200, 260],
-        default: 120,
-        stickToMarkers: false
+        type: OptionType.CUSTOM,
+        description: "",
+        default: 120
     }
 });
