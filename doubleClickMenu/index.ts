@@ -6,6 +6,7 @@
 
 import "./style.css";
 
+import { isPluginEnabled } from "@api/PluginManager";
 import { definePluginSettings } from "@api/Settings";
 import definePlugin, { OptionType } from "@utils/types";
 
@@ -37,7 +38,7 @@ const settings = definePluginSettings({
     },
     hold: {
         type: OptionType.BOOLEAN,
-        description: "Pressing and holding still also opens the menu. Whatever you pressed doesn't get clicked",
+        description: "Pressing and holding still also opens the menu. Whatever you pressed doesn't get clicked. With MouseGestures on, holding something you can drag gets it ready to move instead, so double-click those for the menu",
         default: true
     },
     holdTime: {
@@ -66,6 +67,7 @@ const near = (a: Point, b: Point) => Math.hypot(a.clientX - b.clientX, a.clientY
 
 let lastDown: (Point & { time: number; }) | null = null;
 let armed = false;
+let pressAt: Point | null = null;
 let swallowClick = false;
 let swallowDblClick = false;
 let deferred: ReturnType<typeof setTimeout> | undefined;
@@ -147,6 +149,7 @@ function onPointerDown(e: PointerEvent) {
     swallowClick = false;
     if (!settings.store.hold || e.button !== 0 || !e.isPrimary || !e.isTrusted) return;
     const target = e.target as Element;
+    if (isPluginEnabled("MouseGestures") && target.closest?.('[draggable="true"]')) return;
     const at = point(e);
     const { holdTime, ripple } = settings.store;
     hold = {
@@ -168,6 +171,7 @@ function onPointerMove(e: PointerEvent) {
 function onMouseDown(e: MouseEvent) {
     armed = false;
     if (e.button !== 0 || !e.isTrusted) return;
+    pressAt = point(e);
     const now = e.timeStamp;
     const quick = lastDown !== null && now - lastDown.time <= settings.store.doubleClickSpeed && near(lastDown, e);
     lastDown = quick ? null : { ...point(e), time: now };
@@ -179,6 +183,13 @@ function onMouseDown(e: MouseEvent) {
 
     e.preventDefault();
     armed = true;
+}
+
+function onMouseMove(e: MouseEvent) {
+    if (!pressAt || !(e.buttons & 1) || near(pressAt, e)) return;
+    pressAt = null;
+    lastDown = null;
+    armed = false;
 }
 
 function onClick(e: MouseEvent) {
@@ -224,8 +235,9 @@ const listeners: [string, (e: any) => void][] = [
     ["pointercancel", cancelHold],
     ["dragstart", cancelHold],
     ["wheel", cancelHold],
-    ["blur", cancelHold],
+    ["blur", (e: FocusEvent) => { if (e.target === window) cancelHold(); }],
     ["mousedown", onMouseDown],
+    ["mousemove", onMouseMove],
     ["click", onClick],
     ["dblclick", onDblClick]
 ];
