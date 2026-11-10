@@ -575,20 +575,14 @@ const BUILTIN: Action[] = [
     { id: "person.copyId", zone: "people", label: "Copy their user ID", run: needs("userId", "someone", id => copyWithToast(id, "User ID copied")) }
 ];
 
-const DIAGONAL = /[7913]/;
-const straightened = (gesture: string) => gesture.replace(/[7913]/g, "").replace(/(.)\1+/g, "$1");
-
-export function resolve(gesture: string, ctx: Context) {
+export function resolve(gesture: string, ctx: Context, loose?: string) {
     const { bindings } = settings.store;
     const zones = [...ctx.zones, "anywhere" as const];
-    for (const zone of zones) {
-        const action = allActions().find(a => a.zone === zone && bindings[a.id] === gesture);
-        if (action) return action;
-    }
-    if (!DIAGONAL.test(gesture)) return;
-    const loose = straightened(gesture);
-    for (const zone of zones) {
-        const action = allActions().find(a => a.zone === zone && bindings[a.id] === loose && !DIAGONAL.test(bindings[a.id]));
-        if (action) return action;
+    for (const reading of loose && loose !== gesture ? [gesture, loose] : [gesture]) {
+        if (!reading) continue;
+        for (const zone of zones) {
+            const action = allActions().find(a => a.zone === zone && bindings[a.id] === reading);
+            if (action) return action;
+        }
     }
 }

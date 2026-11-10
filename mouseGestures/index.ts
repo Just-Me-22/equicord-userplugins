@@ -13,7 +13,7 @@ import { Action, allActions, resolve } from "./actions";
 import { hideCheat, pointer, showCheat } from "./cheat";
 import { closeOverlay, drawOverlay, dropReady, openOverlay, showReady, tick } from "./overlay";
 import { radialOpen } from "./radial";
-import { DEFAULT_BINDINGS, DEFAULTS_VERSION, settings } from "./settings";
+import { DEFAULT_BINDINGS, DEFAULTS_VERSION, settings, strokeOptions } from "./settings";
 import { matchShape } from "./shapes";
 import { arrows, Stroke } from "./stroke";
 import { openStudio } from "./studio";
@@ -69,9 +69,10 @@ function mark(el: Element | null | undefined) {
 }
 
 function decide(stroke: Stroke, ctx: Context): { action?: Action; keys: string; } {
-    const shape = matchShape(stroke.points, ctx);
+    const shape = matchShape(stroke.smooth, ctx);
     if (shape) return { action: shape.action, keys: `◎ ${shape.shape.name}` };
-    return { action: stroke.gesture ? resolve(stroke.gesture, ctx) : undefined, keys: arrows(stroke.gesture) };
+    const action = stroke.gesture ? resolve(stroke.gesture, ctx, stroke.loose) : undefined;
+    return { action, keys: arrows((action && settings.store.bindings[action.id]) || stroke.gesture) };
 }
 
 function run(action: Action | undefined, ctx: Context) {
@@ -96,8 +97,11 @@ function end(go: boolean) {
     d.marked?.classList.remove("vc-mg-target");
     if (!d.drawing) return;
     hideCheat();
-    swallowClick = true;
     const action = go ? decide(d.stroke, d.ctx).action : undefined;
+    const [lx, ly] = d.stroke.points[d.stroke.points.length - 1];
+    const { startDistance, stepSize } = settings.store;
+    const wiggle = go && !action && Math.hypot(lx - d.x, ly - d.y) < startDistance && d.stroke.size < Math.max(startDistance, stepSize) * 1.5;
+    swallowClick = !wiggle;
     closeOverlay(!!action);
     run(action, d.ctx);
 }
@@ -116,7 +120,7 @@ function onPointerDown(e: PointerEvent) {
         y: e.clientY,
         at: e.timeStamp,
         ctx,
-        stroke: new Stroke(e.clientX, e.clientY, settings.store.stepSize, settings.store.diagonals),
+        stroke: new Stroke(e.clientX, e.clientY, strokeOptions()),
         drawing: false,
         marked: null,
         movable: ctx.zones.length && !ctx.hit ? e.target.closest('[draggable="true"]') : null
@@ -157,7 +161,7 @@ function onPointerMove(e: PointerEvent) {
     watchStill(e);
     const { action, keys } = decide(drag.stroke, drag.ctx);
     mark(action && action.zone !== "anywhere" ? drag.ctx.targets[action.zone] : null);
-    drawOverlay(drag.stroke.points, e.clientX, e.clientY, keys, action?.label ?? null);
+    drawOverlay(drag.stroke.smooth, e.clientX, e.clientY, keys, action?.label ?? null);
 }
 
 function onDragStart(e: DragEvent) {
@@ -239,6 +243,7 @@ function addNewDefaults() {
     const version = settings.store.defaultsVersion ?? 1;
     if (version >= DEFAULTS_VERSION) return;
     if (version < 3 && settings.store.stepSize < 22) settings.store.stepSize = 30;
+    if (version < 4 && settings.store.stepSize >= 28) settings.store.stepSize = 16;
     const bindings = { ...settings.store.bindings };
     const zoneOf = (id: string) => allActions().find(a => a.id === id)?.zone;
     for (const [id, gesture] of Object.entries(DEFAULT_BINDINGS)) {

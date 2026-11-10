@@ -18,8 +18,8 @@ export interface Shape {
 }
 
 export const SAMPLES = 3;
-export const THRESHOLD = 0.72;
-export const MIN_LENGTH = 60;
+export const threshold = () => 0.72 - (settings.store.steady ? settings.store.steadyAmount / 1000 : 0);
+export const MIN_LENGTH = 30;
 const POINTS = 32;
 
 export function pathLength(points: Point[]) {
@@ -88,7 +88,7 @@ export function bestShape(points: Point[], ctx: Context | null, shapes: Shape[] 
 
 export const matchShape = (points: Point[], ctx: Context | null) => {
     const best = bestShape(points, ctx);
-    return best && best.score >= THRESHOLD ? best : null;
+    return best && best.score >= threshold() ? best : null;
 };
 
 export const shapeIcon = (sample: Point[], size = 24) =>

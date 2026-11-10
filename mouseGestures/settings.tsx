@@ -9,6 +9,7 @@ import { OptionType } from "@utils/types";
 
 import type { Command } from "./actions";
 import type { Shape } from "./shapes";
+import type { StrokeOptions } from "./stroke";
 import { StudioLauncher } from "./studio";
 
 export const DEFAULT_BINDINGS: Record<string, string> = {
@@ -35,7 +36,7 @@ export const DEFAULT_BINDINGS: Record<string, string> = {
     "person.profile": "U"
 };
 
-export const DEFAULTS_VERSION = 3;
+export const DEFAULTS_VERSION = 4;
 
 export const settings = definePluginSettings({
     studio: {
@@ -120,7 +121,17 @@ export const settings = definePluginSettings({
     stepSize: {
         type: OptionType.CUSTOM,
         description: "",
-        default: 30
+        default: 16
+    },
+    steady: {
+        type: OptionType.CUSTOM,
+        description: "",
+        default: true
+    },
+    steadyAmount: {
+        type: OptionType.CUSTOM,
+        description: "",
+        default: 60
     },
     startDistance: {
         type: OptionType.CUSTOM,
@@ -192,4 +203,10 @@ export const settings = definePluginSettings({
         description: "",
         default: 120
     }
+});
+
+export const strokeOptions = (): StrokeOptions => ({
+    step: settings.store.stepSize,
+    diagonals: settings.store.diagonals,
+    steady: settings.store.steady ? settings.store.steadyAmount / 100 : 0
 });

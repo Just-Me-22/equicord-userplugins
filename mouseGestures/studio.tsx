@@ -11,8 +11,8 @@ import type { CSSProperties, PointerEvent, ReactNode } from "react";
 
 import { Action, allActions, Command, COMMAND_KINDS, CommandKind, commandLabel, opt, OptionDef, resolve, setOpt } from "./actions";
 import { MATERIALS, trailClass, trailMarkup, trailVars } from "./overlay";
-import { DEFAULT_BINDINGS, settings } from "./settings";
-import { bestShape, isReady, normalize, pathLength, Point, SAMPLES, Shape, shapeAction, shapeIcon, THRESHOLD } from "./shapes";
+import { DEFAULT_BINDINGS, settings, strokeOptions } from "./settings";
+import { bestShape, isReady, MIN_LENGTH, normalize, pathLength, Point, SAMPLES, Shape, shapeAction, shapeIcon, threshold } from "./shapes";
 import { arrows, Stroke } from "./stroke";
 import { Context, Zone, ZONES } from "./zones";
 
@@ -172,7 +172,7 @@ function Choice({ options, value, onPick }: { options: { value: string; label: s
     );
 }
 
-function DrawPad({ hint, onStroke, children, height = 220 }: { hint: string; onStroke(points: Point[], gesture: string): void; children?: ReactNode; height?: number; }) {
+function DrawPad({ hint, onStroke, children, height = 220 }: { hint: string; onStroke(points: Point[], gesture: string, loose: string): void; children?: ReactNode; height?: number; }) {
     const [points, setPoints] = useState<Point[]>([]);
     const [gesture, setGesture] = useState("");
     const stroke = useRef<Stroke | null>(null);
@@ -192,7 +192,7 @@ function DrawPad({ hint, onStroke, children, height = 220 }: { hint: string; onS
                 onPointerDown={e => {
                     e.currentTarget.setPointerCapture(e.pointerId);
                     const [x, y] = local(e);
-                    stroke.current = new Stroke(x, y, settings.store.stepSize, settings.store.diagonals);
+                    stroke.current = new Stroke(x, y, strokeOptions());
                     setPoints([[x, y]]);
                     setGesture("");
                 }}
@@ -200,13 +200,13 @@ function DrawPad({ hint, onStroke, children, height = 220 }: { hint: string; onS
                     const s = stroke.current;
                     if (!s) return;
                     s.add(...local(e));
-                    setPoints([...s.points]);
+                    setPoints([...s.smooth]);
                     setGesture(s.gesture);
                 }}
                 onPointerUp={() => {
                     const s = stroke.current;
                     stroke.current = null;
-                    if (s && s.points.length > 2) onStroke(s.points, s.gesture);
+                    if (s && s.points.length > 2) onStroke(s.smooth, s.gesture, s.loose);
                 }}
             >
                 <Trail points={points} uid="pad" />
@@ -220,15 +220,15 @@ function DrawPad({ hint, onStroke, children, height = 220 }: { hint: string; onS
 }
 
 function TryView() {
-    const [result, setResult] = useState<{ points: Point[]; gesture: string; } | null>(null);
+    const [result, setResult] = useState<{ points: Point[]; gesture: string; loose: string; } | null>(null);
     const shape = result ? bestShape(result.points, null) : null;
-    const matched = shape && shape.score >= THRESHOLD ? shape : null;
+    const matched = shape && shape.score >= threshold() ? shape : null;
 
     return (
         <div className="vc-mgs-view">
             <h3>Try a gesture</h3>
             <p className="vc-mgs-lede">Draw anything to see what it does in each place. Your shapes are checked first, then the arrow gestures.</p>
-            <DrawPad hint="Draw here" height={280} onStroke={(points, gesture) => setResult({ points, gesture })}>
+            <DrawPad hint="Draw here" height={280} onStroke={(points, gesture, loose) => setResult({ points, gesture, loose })}>
                 {result && (
                     <div className="vc-mgs-verdict">
                         <div className="vc-mgs-verdict-head">
@@ -240,7 +240,7 @@ function TryView() {
                             <ul className="vc-mgs-zone-results">
                                 {ZONES.map(z => {
                                     const ctx: Context = { zones: z.id === "anywhere" ? [] : [z.id], targets: {} };
-                                    const action = result.gesture ? resolve(result.gesture, ctx) : undefined;
+                                    const action = result.gesture ? resolve(result.gesture, ctx, result.loose) : undefined;
                                     return (
                                         <li key={z.id}>
                                             <span>{z.label}</span>
@@ -414,7 +414,7 @@ function ShapeView({ shape, onDeleted }: { shape: Shape; onDeleted(): void; }) {
     const learned = shape.samples.length >= SAMPLES;
 
     const onStroke = (points: Point[]) => {
-        if (pathLength(points) < 60) return setVerdict({ text: "Too short. Draw it bigger.", good: false });
+        if (pathLength(points) < MIN_LENGTH) return setVerdict({ text: "Too short. Draw it bigger.", good: false });
         const latest = settings.store.shapes.find(s => s.id === shape.id)!;
         if (latest.samples.length < SAMPLES) {
             const samples = [...latest.samples, normalize(points)];
@@ -422,8 +422,8 @@ function ShapeView({ shape, onDeleted }: { shape: Shape; onDeleted(): void; }) {
             return setVerdict({ text: samples.length < SAMPLES ? `Drawing ${samples.length} of ${SAMPLES} saved.` : "Learned.", good: true });
         }
         const best = bestShape(points, null, settings.store.shapes.filter(isReady).concat(action ? [] : [latest]));
-        if (best && best.score >= THRESHOLD && best.shape.id === shape.id) setVerdict({ text: `Matches, ${Math.round(best.score * 100)}%.`, good: true });
-        else if (best && best.score >= THRESHOLD) setVerdict({ text: `That matched “${best.shape.name}” instead.`, good: false });
+        if (best && best.score >= threshold() && best.shape.id === shape.id) setVerdict({ text: `Matches, ${Math.round(best.score * 100)}%.`, good: true });
+        else if (best && best.score >= threshold()) setVerdict({ text: `That matched “${best.shape.name}” instead.`, good: false });
         else setVerdict({ text: "No match. Draw it closer to your drawings.", good: false });
     };
 
@@ -541,7 +541,7 @@ function Swatches({ value, onPick, accent = true }: { value: string; onPick(v: s
 }
 
 function Feel() {
-    const s = settings.use(["trailOpacity", "trailGlow", "trailCap", "trailTaper", "tailLength", "fadeOut", "matchColor", "pillPos", "diagonals", "stepSize", "startDistance", "holdToMove", "readyRing", "cheatSheet", "cheatDelay", "trail", "trailColor", "trailColor2", "trailStyle", "trailFade", "trailWidth", "sound", "twoFingerSwipes", "swipeDistance"]);
+    const s = settings.use(["steady", "steadyAmount", "trailOpacity", "trailGlow", "trailCap", "trailTaper", "tailLength", "fadeOut", "matchColor", "pillPos", "diagonals", "stepSize", "startDistance", "holdToMove", "readyRing", "cheatSheet", "cheatDelay", "trail", "trailColor", "trailColor2", "trailStyle", "trailFade", "trailWidth", "sound", "twoFingerSwipes", "swipeDistance"]);
     const look = `${s.trailStyle}${s.trailFade}${s.trailWidth}${s.trailColor}${s.trailColor2}${s.trailTaper}${s.tailLength}`;
 
     return (
@@ -585,10 +585,15 @@ function Feel() {
 
             <h3>Drawing</h3>
             <Toggle label="Diagonals" note="↖ ↗ ↙ ↘ count as their own directions." value={s.diagonals} onChange={v => settings.store.diagonals = v} />
-            <Range label="Start after" min={6} max={40} step={1} value={s.startDistance} unit="px" onChange={v => settings.store.startDistance = v} />
-            <p className="vc-mgs-muted vc-mgs-hint">How far you drag before it counts as a gesture. Raise it if clicks turn into gestures.</p>
-            <Range label="Line length" min={20} max={70} step={1} value={s.stepSize} unit="px" onChange={v => settings.store.stepSize = v} />
-            <p className="vc-mgs-muted vc-mgs-hint">How long each line of a gesture has to be. Raise it if wobbles add extra arrows.</p>
+            <Toggle label="Steady hand" note="Reads the overall shape of your stroke and ignores shakes, wobbles and tilted lines." value={s.steady} onChange={v => settings.store.steady = v} />
+            {s.steady && <>
+                <Range label="Shake filter" min={10} max={100} step={5} value={s.steadyAmount} unit="%" onChange={v => settings.store.steadyAmount = v} />
+                <p className="vc-mgs-muted vc-mgs-hint">Higher forgives bigger shakes, but very small turns in a gesture start to get ignored too.</p>
+            </>}
+            <Range label="Smallest gesture" min={8} max={70} step={1} value={s.stepSize} unit="px" onChange={v => settings.store.stepSize = v} />
+            <p className="vc-mgs-muted vc-mgs-hint">The smallest stroke that counts. Lower it to draw tiny gestures.</p>
+            <Range label="Start after" min={4} max={40} step={1} value={s.startDistance} unit="px" onChange={v => settings.store.startDistance = v} />
+            <p className="vc-mgs-muted vc-mgs-hint">How far you move before drawing starts. A small wiggle that ends where it began still counts as a click.</p>
             <Range label="Hold before moving" min={200} max={2000} step={50} value={s.holdToMove} unit="ms" onChange={v => settings.store.holdToMove = v} />
             <Toggle label="Ready ring" note="Fills where a gesture can start." value={s.readyRing} onChange={v => settings.store.readyRing = v} />
 
@@ -715,7 +720,7 @@ function Studio() {
     );
 }
 
-const FEEL_KEYS = ["trailOpacity", "trailGlow", "trailCap", "trailTaper", "tailLength", "fadeOut", "matchColor", "pillPos", "diagonals", "stepSize", "startDistance", "holdToMove", "readyRing", "cheatSheet", "cheatDelay", "reactEmoji", "trail", "trailColor", "trailColor2", "trailStyle", "trailFade", "trailWidth", "sound", "twoFingerSwipes", "swipeDistance"] as const;
+const FEEL_KEYS = ["steady", "steadyAmount", "trailOpacity", "trailGlow", "trailCap", "trailTaper", "tailLength", "fadeOut", "matchColor", "pillPos", "diagonals", "stepSize", "startDistance", "holdToMove", "readyRing", "cheatSheet", "cheatDelay", "reactEmoji", "trail", "trailColor", "trailColor2", "trailStyle", "trailFade", "trailWidth", "sound", "twoFingerSwipes", "swipeDistance"] as const;
 
 function exportAll() {
     const store = settings.store as any;
