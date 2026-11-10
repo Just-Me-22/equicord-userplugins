@@ -7,7 +7,7 @@
 import { MessagePopoverButtonMap } from "@api/MessagePopover";
 import { isPluginEnabled, plugins } from "@api/PluginManager";
 import { getUserSettingLazy } from "@api/UserSettings";
-import { autoGroupAll, bookmarkPlaceholderName, closeGroup, closeOtherTabs, closeTab, closeTabAnimated, closeTabsToTheLeft, closeTabsToTheRight, createTab, cycleRecentTab, duplicateTab, endRecentCycle, isTabSelected, jumpToUnreadTab, moveCurrentTab, moveToTab, openedTabs, removeFromGroup, renameTab, reopenClosedTab, settings as tabSettings, toggleCompactTab, toggleGroupCollapsed, togglePin } from "@equicordplugins/channelTabs/util";
+import { autoGroupAll, bookmarkPlaceholderName, closeGroup, closeOtherTabs, closeTab, closeTabAnimated, closeTabsToTheLeft, closeTabsToTheRight, createTab, cycleRecentTab, duplicateTab, endRecentCycle, getGroupMembers, groupLabel, groupTabs, isTabSelected, jumpToUnreadTab, moveCurrentTab, moveToTab, openedTabs, removeFromGroup, renameTab, reopenClosedTab, settings as tabSettings, tabGroups, toggleCompactTab, toggleGroupCollapsed, togglePin } from "@equicordplugins/channelTabs/util";
 import NoReplyMentionPlugin from "@plugins/noReplyMention";
 import { copyWithToast, insertTextIntoChatInputBox, openPrivateChannel, openUserProfile, sendMessage } from "@utils/discord";
 import type { Channel, Message } from "@vencord/discord-types";
@@ -200,6 +200,12 @@ function stepServer(by: 1 | -1) {
     NavigationRouter.transitionToGuild(next);
 }
 
+function jumpToServer(n: number) {
+    const id = SortedGuildStore.getFlattenedGuildIds()[n - 1];
+    if (!id) return warn(`You don't have a server number ${n}`);
+    NavigationRouter.transitionToGuild(id);
+}
+
 function myLastMessage(channelId: string | undefined) {
     if (!channelId) return undefined;
     const me = UserStore.getCurrentUser()?.id;
@@ -326,6 +332,26 @@ function inGroup(ctx: Context, run: (groupId: string, tabId: number) => void) {
     const tab = tabOf(ctx);
     if (!tab?.groupId) return warn("This tab isn't in a group");
     run(tab.groupId, tab.id);
+}
+
+const RING_SIZE = 8;
+
+function pickGroup(ctx: Context) {
+    const tab = tabOf(ctx);
+    if (!tab) return;
+    const at = openedTabs.indexOf(tab);
+    const fresh: Action[] = [];
+    for (const [by, side] of [[-1, "left"], [1, "right"]] as const) {
+        const other = openedTabs[at + by];
+        if (other && !other.groupId) fresh.push({ id: `tab.newGroup.${side}`, zone: "tabs", label: `New group with ${side} tab`, run: () => groupTabs(tab.id, other.id) });
+    }
+    const groups: Action[] = tabGroups.filter(g => g.id !== tab.groupId).slice(0, RING_SIZE - fresh.length).map(g => {
+        const members = getGroupMembers(g.id);
+        return { id: `tab.toGroup.${g.id}`, zone: "tabs", label: `${groupLabel(g)} (${members.length})`, run: () => groupTabs(tab.id, members[0].id) };
+    });
+    const items = [...groups, ...fresh];
+    if (!items.length) return warn("No group to put this tab in yet. Open another tab next to it first");
+    openRadial(items, ctx, pointer.x, pointer.y);
 }
 
 let recentTimer: ReturnType<typeof setTimeout> | undefined;
@@ -573,6 +599,26 @@ const BUILTIN: Action[] = [
     { id: "zoom.out", zone: "anywhere", group: "Inbox and zoom", label: "Zoom out", run: () => pressKeybind("mod+minus") },
     { id: "zoom.reset", zone: "anywhere", group: "Inbox and zoom", label: "Reset zoom", run: () => pressKeybind("mod+0") },
 
+    { id: "nav.nextServer", zone: "anywhere", group: "Getting around", label: "Next server", run: () => stepServer(1) },
+    { id: "nav.prevServer", zone: "anywhere", group: "Getting around", label: "Previous server", run: () => stepServer(-1) },
+    { id: "nav.nextChannel", zone: "anywhere", group: "Getting around", label: "Next channel", run: () => pressKeybind("alt+down") },
+    { id: "nav.prevChannel", zone: "anywhere", group: "Getting around", label: "Previous channel", run: () => pressKeybind("alt+up") },
+    { id: "nav.lastServer", zone: "anywhere", group: "Getting around", label: "Switch between DMs and your last server", run: () => pressKeybind("mod+alt+right") },
+    { id: "nav.jumpServer", zone: "anywhere", group: "Getting around", label: "Jump to a server by number", options: [{ key: "number", label: "Server number", type: "number", default: 1, min: 1, max: 9 }], run: () => jumpToServer(Number(opt("nav.jumpServer", "number", 1))) },
+    { id: "nav.categories", zone: "anywhere", group: "Getting around", label: "Collapse or expand all categories", run: () => pressKeybind("mod+shift+a") },
+    { id: "layout.sidePanel", zone: "anywhere", group: "Layout", label: "Show or hide the voice chat or DM profile", run: () => pressKeybind("mod+u") },
+    { id: "layout.focusBox", zone: "anywhere", group: "Layout", label: "Focus the message box", run: () => ComponentDispatch.dispatchToLastSubscribed("TEXTAREA_FOCUS") },
+    { id: "layout.searchServer", zone: "anywhere", group: "Layout", label: "Search this server", run: () => pressKeybind("mod+shift+f") },
+    { id: "make.groupDm", zone: "anywhere", group: "Create and share", label: "Start a group DM", run: () => pressKeybind("mod+shift+t") },
+    { id: "make.server", zone: "anywhere", group: "Create and share", label: "Create or join a server", run: () => pressKeybind("mod+shift+n") },
+    { id: "make.thread", zone: "anywhere", group: "Create and share", label: "Start a thread in this channel", run: () => pressKeybind("mod+shift+alt+n") },
+    { id: "make.upload", zone: "anywhere", group: "Create and share", label: "Upload a file", run: () => pressKeybind("mod+shift+u") },
+    { id: "make.channelLink", zone: "anywhere", group: "Create and share", label: "Copy this channel's link", run: () => pressKeybind("mod+shift+l") },
+    { id: "other.shortcuts", zone: "anywhere", group: "More Discord shortcuts", label: "Show keyboard shortcuts", run: () => pressKeybind("mod+/") },
+    { id: "other.help", zone: "anywhere", group: "More Discord shortcuts", label: "Open Discord help", run: () => pressKeybind("mod+shift+h") },
+    { id: "other.apps", zone: "anywhere", group: "More Discord shortcuts", label: "Browse apps", run: () => pressKeybind("mod+ctrl+a") },
+    { id: "other.wumpus", zone: "anywhere", group: "More Discord shortcuts", label: "Vibe with Wumpus", run: () => pressKeybind("mod+alt+shift+w") },
+
     { id: "msg.replyOrEdit", zone: "messages", label: "Reply, or edit if it's yours", options: [PING], run: needsMessage(hit => isMine(hit.message) ? edit(hit) : replyAs("msg.replyOrEdit", hit)) },
     { id: "msg.reply", zone: "messages", label: "Reply", options: [PING], run: needsMessage(hit => replyAs("msg.reply", hit)) },
     { id: "msg.edit", zone: "messages", label: "Edit", run: needsMessage(edit) },
@@ -607,6 +653,7 @@ const BUILTIN: Action[] = [
     { id: "tab.closeLeft", zone: "tabs", label: "Close tabs to the left", run: tabs(ctx => { const id = tabHere(ctx); if (id != null) closeTabsToTheLeft(id); }) },
     { id: "tab.closeRight", zone: "tabs", label: "Close tabs to the right", run: tabs(ctx => { const id = tabHere(ctx); if (id != null) closeTabsToTheRight(id); }) },
     { id: "tab.groupFold", zone: "tabs", label: "Collapse or expand its group", run: tabs(ctx => inGroup(ctx, toggleGroupCollapsed)) },
+    { id: "tab.toGroup", zone: "tabs", label: "Put this tab in a group", run: tabs(pickGroup) },
     { id: "tab.ungroup", zone: "tabs", label: "Take it out of its group", run: tabs(ctx => inGroup(ctx, (_, tabId) => removeFromGroup(tabId, true))) },
     { id: "tab.closeGroup", zone: "tabs", label: "Close its whole group", run: tabs(ctx => inGroup(ctx, closeGroup)) },
     { id: "tab.groupAll", zone: "tabs", label: "Group tabs by server", run: tabs(autoGroupAll) },
