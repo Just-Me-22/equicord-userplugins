@@ -6,7 +6,7 @@
 
 import ErrorBoundary from "@components/ErrorBoundary";
 import { chooseFile, saveFile } from "@utils/web";
-import { Alerts, Modal, openModal, SelectedChannelStore, SelectedGuildStore, showToast, useRef, useState } from "@webpack/common";
+import { Alerts, Modal, openModal, React, SelectedChannelStore, SelectedGuildStore, showToast, useRef, useState } from "@webpack/common";
 import type { CSSProperties, PointerEvent, ReactNode } from "react";
 
 import { Action, allActions, Command, COMMAND_KINDS, CommandKind, commandLabel, opt, OptionDef, setOpt } from "./actions";
@@ -252,16 +252,79 @@ function ZoneAssign({ template, find }: { template: Point[]; find?(ctx: Context)
                 const found = find?.({ zones: z.id === "anywhere" ? [] : [z.id], targets: {} });
                 const current = found?.zone === z.id ? found : list.find(a => templatesOf(a.id).some(t => similar(t, template)));
                 return (
-                    <label key={z.id} className="vc-mgs-assign">
+                    <div key={z.id} className="vc-mgs-assign">
                         <span>{z.label}</span>
-                        <select className="vc-mgs-select" value={current?.id ?? ""} onChange={e => assign(template, current, list.find(a => a.id === e.currentTarget.value))}>
-                            <option value="">{z.id === "anywhere" ? "Nothing" : "Same as Anywhere"}</option>
-                            {list.map(a => <option key={a.id} value={a.id}>{a.label}</option>)}
-                        </select>
+                        <Picker
+                            value={current?.id ?? ""}
+                            options={list.map(a => ({ value: a.id, label: a.label, group: a.group }))}
+                            empty={z.id === "anywhere" ? "Nothing" : "Same as Anywhere"}
+                            onChange={v => assign(template, current, list.find(a => a.id === v))}
+                        />
                         {!current && z.id !== "anywhere" && everywhere && <small>Runs “{everywhere.label}” here for now.</small>}
-                    </label>
+                    </div>
                 );
             })}
+        </div>
+    );
+}
+
+interface Choice { value: string; label: string; group?: string; }
+
+const commandChoices = (exclude?: string): Choice[] =>
+    ZONES.flatMap(z => allActions().filter(a => a.zone === z.id && a.id !== exclude).map(a => ({ value: a.id, label: a.label, group: z.label })));
+
+function Picker({ value, options, empty, onChange }: { value: string; options: Choice[]; empty?: string; onChange(value: string): void; }) {
+    const [open, setOpen] = useState(false);
+    const [query, setQuery] = useState("");
+    const current = options.find(o => o.value === value);
+    const shown = options.filter(o => !query || o.label.toLowerCase().includes(query.toLowerCase()));
+    const choose = (v: string) => {
+        onChange(v);
+        setOpen(false);
+        setQuery("");
+    };
+    let group: string | undefined;
+
+    return (
+        <div className={open ? "vc-mgs-picker vc-mgs-picker-open" : "vc-mgs-picker"}>
+            <button type="button" className="vc-mgs-picker-button" aria-expanded={open} onClick={() => setOpen(!open)}>
+                <span className={current ? undefined : "vc-mgs-muted"}>{current?.label ?? empty ?? "Choose"}</span>
+                <span aria-hidden>{open ? "▴" : "▾"}</span>
+            </button>
+            {open && (
+                <div className="vc-mgs-picker-panel">
+                    {options.length > 8 && (
+                        <input
+                            autoFocus
+                            className="vc-mg-input"
+                            placeholder="Search commands"
+                            value={query}
+                            onChange={e => setQuery(e.currentTarget.value)}
+                            onKeyDown={e => {
+                                if (e.key === "Escape") {
+                                    e.stopPropagation();
+                                    setOpen(false);
+                                }
+                                if (e.key === "Enter" && shown[0]) choose(shown[0].value);
+                            }}
+                        />
+                    )}
+                    <div className="vc-mgs-picker-list" role="listbox">
+                        {empty !== undefined && !query && <button type="button" role="option" aria-selected={!value} className="vc-mgs-picker-item vc-mgs-muted" onClick={() => choose("")}>{empty}</button>}
+                        {shown.map(o => {
+                            const head = o.group && o.group !== group ? <h5>{o.group}</h5> : null;
+                            group = o.group;
+                            return (
+                                <React.Fragment key={o.value}>
+                                    {head}
+                                    <button type="button" role="option" aria-selected={o.value === value} className={o.value === value ? "vc-mgs-picker-item vc-mgs-picker-on" : "vc-mgs-picker-item"} onClick={() => choose(o.value)}>{o.label}</button>
+                                </React.Fragment>
+                            );
+                        })}
+                        {!shown.length && <p className="vc-mgs-muted">Nothing matches.</p>}
+                    </div>
+                </div>
+            )}
         </div>
     );
 }
@@ -301,12 +364,10 @@ function OptionField({ action, def }: { action: Action; def: OptionDef; }) {
     if (def.type === "number") return <Range label={def.label} min={def.min ?? 1} max={def.max ?? 5} step={1} value={Number(value)} unit="" onChange={v => setOpt(action.id, def.key, v)} />;
     if (def.type === "select")
         return (
-            <label className="vc-mgs-field">
+            <div className="vc-mgs-field">
                 <span>{def.label}</span>
-                <select className="vc-mgs-select" value={String(value)} onChange={e => setOpt(action.id, def.key, e.currentTarget.value)}>
-                    {def.choices!.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
-                </select>
-            </label>
+                <Picker value={String(value)} options={def.choices!} onChange={v => setOpt(action.id, def.key, v)} />
+            </div>
         );
     return (
         <label className="vc-mgs-field">
@@ -318,14 +379,7 @@ function OptionField({ action, def }: { action: Action; def: OptionDef; }) {
 
 function ActionSelect({ value, exclude, onChange }: { value: string; exclude: string; onChange(id: string): void; }) {
     return (
-        <select className="vc-mgs-select" value={value} onChange={e => onChange(e.currentTarget.value)}>
-            <option value="">Choose a command</option>
-            {ZONES.map(z => (
-                <optgroup key={z.id} label={z.label}>
-                    {allActions().filter(a => a.zone === z.id && a.id !== exclude).map(a => <option key={a.id} value={a.id}>{a.label}</option>)}
-                </optgroup>
-            ))}
-        </select>
+        <Picker value={value} options={commandChoices(exclude)} empty="Choose a command" onChange={onChange} />
     );
 }
 
@@ -359,12 +413,10 @@ function CommandFields({ command }: { command: Command; }) {
                 <span>Name</span>
                 <input className="vc-mg-input" value={command.label} placeholder={kind.label} onChange={e => updateCommand(command.id, { label: e.currentTarget.value })} />
             </label>
-            <label className="vc-mgs-field">
+            <div className="vc-mgs-field">
                 <span>What it does</span>
-                <select className="vc-mgs-select" value={command.kind} onChange={e => updateCommand(command.id, { kind: e.currentTarget.value as CommandKind })}>
-                    {COMMAND_KINDS.map(k => <option key={k.value} value={k.value}>{k.label}</option>)}
-                </select>
-            </label>
+                <Picker value={command.kind} options={COMMAND_KINDS} onChange={v => updateCommand(command.id, { kind: v as CommandKind })} />
+            </div>
             {command.kind === "macro" || command.kind === "radial" ? <MacroSteps command={command} /> : <label className="vc-mgs-field">
                 <span>{command.kind === "react" ? "Emoji" : command.kind === "link" ? "Link" : command.kind === "channel" ? "Channel" : "Text"}</span>
                 {command.kind === "type" || command.kind === "send"
@@ -486,17 +538,10 @@ function ShapeView({ shape, onDeleted }: { shape: Shape; onDeleted(): void; }) {
                 : <DrawPad hint={learned ? "Draw it to test" : "Draw your shape here"} onStroke={onStroke}>
                     {verdict && <div className={verdict.good ? "vc-mgs-verdict-line" : "vc-mgs-verdict-line vc-mg-warn"}>{verdict.text}</div>}
                 </DrawPad>}
-            <label className="vc-mgs-field">
+            <div className="vc-mgs-field">
                 <span>What it does</span>
-                <select className="vc-mgs-select" value={shape.action} onChange={e => updateShape(shape.id, { action: e.currentTarget.value })}>
-                    <option value="">Choose an action</option>
-                    {ZONES.map(z => (
-                        <optgroup key={z.id} label={z.label}>
-                            {allActions().filter(a => a.zone === z.id).map(a => <option key={a.id} value={a.id}>{a.label}</option>)}
-                        </optgroup>
-                    ))}
-                </select>
-            </label>
+                <Picker value={shape.action} options={commandChoices()} empty="Choose a command" onChange={v => updateShape(shape.id, { action: v })} />
+            </div>
             <p className="vc-mgs-muted">
                 {action ? action.zone === "anywhere" ? "Works anywhere you can draw." : `Works when you start in: ${zoneLabel(action.zone)}.` : "It does nothing until you choose an action."}
             </p>

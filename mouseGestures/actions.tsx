@@ -7,7 +7,7 @@
 import { MessagePopoverButtonMap } from "@api/MessagePopover";
 import { isPluginEnabled, plugins } from "@api/PluginManager";
 import { getUserSettingLazy } from "@api/UserSettings";
-import { closeOtherTabs, closeTabAnimated, createTab, isTabSelected, jumpToUnreadTab, moveToTab, openedTabs, reopenClosedTab, toggleCompactTab, togglePin } from "@equicordplugins/channelTabs/util";
+import { autoGroupAll, bookmarkPlaceholderName, closeGroup, closeOtherTabs, closeTab, closeTabAnimated, closeTabsToTheLeft, closeTabsToTheRight, createTab, cycleRecentTab, duplicateTab, endRecentCycle, isTabSelected, jumpToUnreadTab, moveCurrentTab, moveToTab, openedTabs, removeFromGroup, renameTab, reopenClosedTab, settings as tabSettings, toggleCompactTab, toggleGroupCollapsed, togglePin } from "@equicordplugins/channelTabs/util";
 import NoReplyMentionPlugin from "@plugins/noReplyMention";
 import { copyWithToast, insertTextIntoChatInputBox, openPrivateChannel, openUserProfile, sendMessage } from "@utils/discord";
 import type { Channel, Message } from "@vencord/discord-types";
@@ -313,6 +313,60 @@ function cycleTab(by: 1 | -1) {
 }
 
 const tabHere = (ctx: Context) => ctx.tabId ?? openedTabs.find(t => isTabSelected(t.id))?.id;
+const tabOf = (ctx: Context) => openedTabs.find(t => t.id === tabHere(ctx));
+
+function moveTab(ctx: Context, by: number) {
+    const id = tabHere(ctx);
+    if (id == null) return;
+    if (!isTabSelected(id)) moveToTab(id);
+    moveCurrentTab(by);
+}
+
+function inGroup(ctx: Context, run: (groupId: string, tabId: number) => void) {
+    const tab = tabOf(ctx);
+    if (!tab?.groupId) return warn("This tab isn't in a group");
+    run(tab.groupId, tab.id);
+}
+
+let recentTimer: ReturnType<typeof setTimeout> | undefined;
+
+function recentTab() {
+    cycleRecentTab(1);
+    clearTimeout(recentTimer);
+    recentTimer = setTimeout(endRecentCycle, 1200);
+}
+
+function closeReadTabs() {
+    const done = openedTabs.filter(t => !isTabSelected(t.id) && !t.pinned && !ReadStateStore.hasUnread(t.channelId));
+    for (const tab of done) closeTab(tab.id);
+    showToast({ text: done.length ? `Closed ${done.length} read ${done.length === 1 ? "tab" : "tabs"}` : "No read tabs to close", variant: "success" });
+}
+
+function toggleFavourite(ctx: Context) {
+    const tab = tabOf(ctx);
+    const me = UserStore.getCurrentUser()?.id;
+    if (!tab || !me) return;
+    const all = { ...tabSettings.plain.bookmarks };
+    const list = [...(all[me] ?? [])];
+    const at = list.findIndex(b => "channelId" in b && b.channelId === tab.channelId);
+    if (at >= 0) list.splice(at, 1);
+    else list.push({ guildId: tab.guildId, channelId: tab.channelId, name: bookmarkPlaceholderName({ guildId: tab.guildId, channelId: tab.channelId } as any) });
+    tabSettings.store.bookmarks = { ...all, [me]: list };
+    showToast({ text: at >= 0 ? "Removed from favourites" : "Added to favourites", variant: "success" });
+}
+
+function TabRename({ tabId, onClose, transitionState }: { tabId: number; onClose(): void; transitionState: number; }) {
+    const [name, setName] = useState("");
+    const save = () => {
+        renameTab(tabId, name.trim());
+        onClose();
+    };
+    return (
+        <Modal transitionState={transitionState} onClose={onClose} size="sm" title="Rename this tab" subtitle="Leave it empty to go back to the channel's name." actions={[{ text: "Save", variant: "primary", onClick: save }, { text: "Cancel", variant: "secondary", onClick: onClose }]}>
+            <input className="vc-mg-input" style={{ width: "100%" }} value={name} maxLength={40} autoFocus placeholder="Tab name" onChange={e => setName(e.currentTarget.value)} onKeyDown={e => e.key === "Enter" && save()} />
+        </Modal>
+    );
+}
 
 function tabs(run: (ctx: Context) => void) {
     return (ctx: Context) => isPluginEnabled("ChannelTabs") ? run(ctx) : warn("Turn on ChannelTabs for tab gestures");
@@ -542,6 +596,20 @@ const BUILTIN: Action[] = [
     { id: "tab.pin", zone: "tabs", label: "Pin or unpin this tab", run: tabs(ctx => { const id = tabHere(ctx); if (id != null) togglePin(id); }) },
     { id: "tab.compact", zone: "tabs", label: "Shrink or grow this tab", run: tabs(ctx => { const id = tabHere(ctx); if (id != null) toggleCompactTab(id); }) },
     { id: "tab.unread", zone: "tabs", label: "Go to a tab with unreads", run: tabs(jumpToUnreadTab) },
+    { id: "tab.favourite", zone: "tabs", label: "Favourite or unfavourite this tab", run: tabs(toggleFavourite) },
+    { id: "tab.moveLeft", zone: "tabs", label: "Move this tab left", run: tabs(ctx => moveTab(ctx, -1)) },
+    { id: "tab.moveRight", zone: "tabs", label: "Move this tab right", run: tabs(ctx => moveTab(ctx, 1)) },
+    { id: "tab.duplicate", zone: "tabs", label: "Duplicate this tab", run: tabs(ctx => { const id = tabHere(ctx); if (id != null) duplicateTab(id); }) },
+    { id: "tab.closeLeft", zone: "tabs", label: "Close tabs to the left", run: tabs(ctx => { const id = tabHere(ctx); if (id != null) closeTabsToTheLeft(id); }) },
+    { id: "tab.closeRight", zone: "tabs", label: "Close tabs to the right", run: tabs(ctx => { const id = tabHere(ctx); if (id != null) closeTabsToTheRight(id); }) },
+    { id: "tab.groupFold", zone: "tabs", label: "Collapse or expand its group", run: tabs(ctx => inGroup(ctx, toggleGroupCollapsed)) },
+    { id: "tab.ungroup", zone: "tabs", label: "Take it out of its group", run: tabs(ctx => inGroup(ctx, (_, tabId) => removeFromGroup(tabId, true))) },
+    { id: "tab.closeGroup", zone: "tabs", label: "Close its whole group", run: tabs(ctx => inGroup(ctx, closeGroup)) },
+    { id: "tab.groupAll", zone: "tabs", label: "Group tabs by server", run: tabs(autoGroupAll) },
+    { id: "tab.recent", zone: "tabs", label: "Last tab you used (repeat to go further back)", run: tabs(recentTab) },
+    { id: "tab.markAllRead", zone: "tabs", label: "Mark every open tab read", run: tabs(() => ack(openedTabs.map(t => t.channelId))) },
+    { id: "tab.closeRead", zone: "tabs", label: "Close tabs with nothing unread", run: tabs(closeReadTabs) },
+    { id: "tab.rename", zone: "tabs", label: "Rename this tab", run: tabs(ctx => { const id = tabHere(ctx); if (id != null) openModal(props => <TabRename tabId={id} {...props} />); }) },
 
     { id: "server.prev", zone: "servers", label: "Previous server", run: () => stepServer(-1) },
     { id: "server.next", zone: "servers", label: "Next server", run: () => stepServer(1) },
