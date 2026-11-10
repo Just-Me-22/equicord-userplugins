@@ -104,11 +104,19 @@ export class Stroke implements Reading {
         this.smooth = this.points;
     }
 
-    add(x: number, y: number) {
+    push(x: number, y: number) {
         const [lx, ly] = this.points[this.points.length - 1];
         if (Math.hypot(x - lx, y - ly) < MIN_SPACING) return false;
         this.points.push([x, y]);
         if (this.points.length > MAX_POINTS) this.points = this.points.filter((_, i, all) => i % 2 === 0 || i === all.length - 1);
+        return true;
+    }
+
+    add(x: number, y: number) {
+        return this.push(x, y) && this.read();
+    }
+
+    read() {
         const before = this.gesture;
         const reading = recognise(this.points, this.options);
         this.gesture = reading.gesture;

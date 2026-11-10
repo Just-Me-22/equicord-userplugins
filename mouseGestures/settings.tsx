@@ -53,6 +53,11 @@ export const settings = definePluginSettings({
         description: "",
         default: [] as Shape[]
     },
+    drawn: {
+        type: OptionType.CUSTOM,
+        description: "",
+        default: {} as Record<string, [number, number][][]>
+    },
     commands: {
         type: OptionType.CUSTOM,
         description: "",
@@ -152,6 +157,11 @@ export const settings = definePluginSettings({
         type: OptionType.CUSTOM,
         description: "",
         default: true
+    },
+    hoverRun: {
+        type: OptionType.CUSTOM,
+        description: "",
+        default: 800
     },
     cheatDelay: {
         type: OptionType.CUSTOM,

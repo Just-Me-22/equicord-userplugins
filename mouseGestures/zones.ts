@@ -65,11 +65,26 @@ function messageAt(el: Element): Hit | undefined {
     return message && channel ? { element, message, channel } : undefined;
 }
 
-export function contextAt(el: Element | null): Context {
+function nearestMessage(el: Element, y: number) {
+    const list = el.closest('[class*="messagesWrapper"], [data-list-id="chat-messages"]');
+    if (!list) return;
+    let best: Element | undefined, gap = 60;
+    for (const row of list.querySelectorAll(MESSAGE_SELECTOR)) {
+        const r = row.getBoundingClientRect();
+        const d = y < r.top ? r.top - y : y > r.bottom ? y - r.bottom : 0;
+        if (d < gap) {
+            gap = d;
+            best = row;
+        }
+    }
+    return best && messageAt(best);
+}
+
+export function contextAt(el: Element | null, y?: number): Context {
     const ctx: Context = { zones: [], targets: {} };
     if (!el?.closest) return ctx;
 
-    const hit = messageAt(el);
+    const hit = messageAt(el) ?? (y === undefined ? undefined : nearestMessage(el, y));
     if (hit) {
         const name = el.closest('[id^="message-username-"], [class*="avatar_"]');
         if (name) {

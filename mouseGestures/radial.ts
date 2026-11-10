@@ -11,6 +11,7 @@ import type { Context } from "./zones";
 const RADIUS = 96;
 const DEAD = 30;
 
+let dwell: ReturnType<typeof setTimeout> | undefined;
 let ring: { el: HTMLDivElement; items: Action[]; ctx: Context; x: number; y: number; pick: number; } | null = null;
 
 const esc = (text: string) => text.replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]!);
@@ -35,6 +36,16 @@ function highlight(index: number) {
     ring.el.querySelectorAll(".vc-mg-radial-item").forEach((item, i) => item.classList.toggle("vc-mg-radial-on", i === index));
     ring.el.style.setProperty("--vc-mg-radial-angle", index < 0 ? "0deg" : `${index * 360 / ring.items.length}deg`);
     ring.el.classList.toggle("vc-mg-radial-aiming", index >= 0);
+    clearTimeout(dwell);
+    const wait = settings.store.hoverRun;
+    if (index < 0 || wait <= 0) return;
+    dwell = setTimeout(() => {
+        if (!ring || ring.pick < 0) return;
+        const { items, ctx, pick } = ring;
+        closeRadial();
+        swallowNextClick();
+        items[pick].run(ctx);
+    }, wait);
 }
 
 function onMove(e: PointerEvent) {
@@ -97,6 +108,7 @@ export function openRadial(items: Action[], ctx: Context, x: number, y: number) 
     el.style.top = `${cy}px`;
     el.style.color = settings.store.trailColor;
     el.style.setProperty("--vc-mg-radial-slice", `${360 / items.length}deg`);
+    el.style.setProperty("--vc-mg-dwell", `${settings.store.hoverRun}ms`);
     el.innerHTML = `<div class="vc-mg-radial-wedge"></div><div class="vc-mg-radial-hub">✕</div>${items.map((a, i) => {
         const angle = (i * 360 / items.length - 90) * Math.PI / 180;
         return `<div class="vc-mg-radial-item" style="left:${Math.cos(angle) * RADIUS}px;top:${Math.sin(angle) * RADIUS}px"><b>${i + 1}</b>${esc(a.label)}</div>`;
@@ -108,6 +120,7 @@ export function openRadial(items: Action[], ctx: Context, x: number, y: number) 
 }
 
 export function closeRadial() {
+    clearTimeout(dwell);
     if (!ring) return;
     for (const [type, fn] of listeners) window.removeEventListener(type, fn, { capture: true });
     const { el } = ring;

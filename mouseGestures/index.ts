@@ -10,14 +10,14 @@ import { isPluginEnabled } from "@api/PluginManager";
 import definePlugin from "@utils/types";
 
 import { Action, allActions, resolve } from "./actions";
-import { hideCheat, pointer, showCheat } from "./cheat";
+import { cheatContext, cheatMove, cheatOpen, cheatPick, hideCheat, pointer, setCheatRunner, showCheat } from "./cheat";
 import { closeOverlay, drawOverlay, dropReady, openOverlay, showReady, tick } from "./overlay";
 import { radialOpen } from "./radial";
 import { DEFAULT_BINDINGS, DEFAULTS_VERSION, settings, strokeOptions } from "./settings";
-import { matchShape } from "./shapes";
+import { matchShape, readCommand } from "./shapes";
 import { arrows, Stroke } from "./stroke";
 import { openStudio } from "./studio";
-import { Context, contextAt, MESSAGE_SELECTOR } from "./zones";
+import { Context, contextAt, MESSAGE_SELECTOR, ZONES } from "./zones";
 
 const READY_DELAY = 90;
 const SWIPE_SLIDE = 72;
@@ -71,8 +71,8 @@ function mark(el: Element | null | undefined) {
 function decide(stroke: Stroke, ctx: Context): { action?: Action; keys: string; } {
     const shape = matchShape(stroke.smooth, ctx);
     if (shape) return { action: shape.action, keys: `◎ ${shape.shape.name}` };
-    const action = stroke.gesture ? resolve(stroke.gesture, ctx, stroke.loose) : undefined;
-    return { action, keys: arrows((action && settings.store.bindings[action.id]) || stroke.gesture) };
+    const action = readCommand(stroke.smooth, stroke.gesture, stroke.loose, ctx);
+    return { action, keys: action ? "✓" : stroke.gesture ? "?" : "" };
 }
 
 function run(action: Action | undefined, ctx: Context) {
@@ -89,15 +89,21 @@ function disarm(d: NonNullable<typeof drag>) {
     d.movable?.classList.remove("vc-mg-armed");
 }
 
-function end(go: boolean) {
+const NOWHERE: Context = { zones: [], targets: {} };
+
+function end(go: boolean, forced?: Action) {
     const d = drag;
     drag = null;
     if (!d) return;
     disarm(d);
     d.marked?.classList.remove("vc-mg-target");
     if (!d.drawing) return;
+    cancelAnimationFrame(frame);
+    frame = 0;
+    d.stroke.read();
+    const picked = forced ?? (go ? cheatPick() : undefined);
     hideCheat();
-    const action = go ? decide(d.stroke, d.ctx).action : undefined;
+    const action = picked ?? (go ? decide(d.stroke, d.ctx).action : undefined);
     const [lx, ly] = d.stroke.points[d.stroke.points.length - 1];
     const { startDistance, stepSize } = settings.store;
     const wiggle = go && !action && Math.hypot(lx - d.x, ly - d.y) < startDistance && d.stroke.size < Math.max(startDistance, stepSize) * 1.5;
@@ -108,11 +114,21 @@ function end(go: boolean) {
 
 function onPointerDown(e: PointerEvent) {
     if (radialOpen()) return;
+    if (cheatOpen() && !drag) {
+        const picked = cheatPick(), ctx = cheatContext() ?? NOWHERE;
+        hideCheat();
+        if (picked) {
+            stop(e);
+            swallowClick = true;
+            run(picked, ctx);
+            return;
+        }
+    }
     end(false);
     hideCheat();
     swallowClick = false;
     if (e.button !== 0 || !e.isPrimary || !e.isTrusted || !(e.target instanceof Element)) return;
-    const ctx = contextAt(e.target);
+    const ctx = contextAt(e.target, e.clientY);
     pointer.ctx = ctx;
     if (!startsGesture(e, ctx)) return;
     drag = {
@@ -137,6 +153,7 @@ function onPointerDown(e: PointerEvent) {
 
 function watchStill(e: PointerEvent) {
     if (!drag || !settings.store.cheatSheet) return;
+    if (cheatOpen() && cheatMove(e.clientX, e.clientY)) return;
     if (drag.still && Math.hypot(e.clientX - drag.still[0], e.clientY - drag.still[1]) < CHEAT_SLOP) return;
     drag.still = [e.clientX, e.clientY];
     hideCheat();
@@ -149,19 +166,43 @@ function watchStill(e: PointerEvent) {
 function onPointerMove(e: PointerEvent) {
     pointer.x = e.clientX;
     pointer.y = e.clientY;
-    if (!drag) return;
+    if (!drag) {
+        if (cheatOpen()) cheatMove(e.clientX, e.clientY);
+        return;
+    }
     if (!drag.drawing) {
         if (Math.hypot(e.clientX - drag.x, e.clientY - drag.y) < settings.store.startDistance) return;
         drag.drawing = true;
+        matchedAt = 0;
+        decided = { keys: "" };
         disarm(drag);
         if (settings.store.trail) openOverlay();
     }
-    getSelection()?.removeAllRanges();
-    drag.stroke.add(e.clientX, e.clientY);
+    drag.stroke.push(e.clientX, e.clientY);
     watchStill(e);
-    const { action, keys } = decide(drag.stroke, drag.ctx);
-    mark(action && action.zone !== "anywhere" ? drag.ctx.targets[action.zone] : null);
-    drawOverlay(drag.stroke.smooth, e.clientX, e.clientY, keys, action?.label ?? null);
+    frame ||= requestAnimationFrame(paint);
+}
+
+const MATCH_EVERY = 70;
+let frame = 0;
+let matchedAt = 0;
+let decided: ReturnType<typeof decide> = { keys: "" };
+
+function paint(now: number) {
+    frame = 0;
+    const d = drag;
+    if (!d?.drawing) return;
+    d.stroke.read();
+    if (now - matchedAt >= MATCH_EVERY) {
+        matchedAt = now;
+        getSelection()?.removeAllRanges();
+        decided = decide(d.stroke, d.ctx);
+        const { action } = decided;
+        mark(action && action.zone !== "anywhere" ? d.ctx.targets[action.zone] : null);
+    }
+    const { action, keys } = decided;
+    const where = action && action.zone !== "anywhere" ? `${ZONES.find(z => z.id === action.zone)!.label}: ` : "";
+    drawOverlay(d.stroke.smooth, pointer.x, pointer.y, keys, action ? where + action.label : null);
 }
 
 function onDragStart(e: DragEvent) {
@@ -279,6 +320,11 @@ export default definePlugin({
 
     start() {
         addNewDefaults();
+        setCheatRunner((action, ctx) => {
+            if (drag) return end(true, action);
+            hideCheat();
+            run(action, ctx ?? NOWHERE);
+        });
         for (const [type, fn] of listeners) window.addEventListener(type, fn, { capture: true, passive: type === "wheel" });
     },
 

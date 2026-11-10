@@ -90,6 +90,9 @@ export function trailVars(): Record<string, string> {
 }
 
 let root: HTMLDivElement | null = null;
+let parts: { g: SVGGElement; pill: HTMLDivElement; keys: HTMLElement; label: HTMLElement; } | null = null;
+let shown = "";
+let pillWidth = 0;
 
 export function openOverlay() {
     root?.remove();
@@ -100,28 +103,36 @@ export function openOverlay() {
     root.classList.toggle("vc-mg-pill-top", settings.store.pillPos === "top");
     root.innerHTML = '<svg><g></g></svg><div class="vc-mg-pill" hidden><b></b><span></span></div>';
     document.body.appendChild(root);
+    const pill = root.querySelector<HTMLDivElement>(".vc-mg-pill")!;
+    parts = { g: root.querySelector("g")!, pill, keys: pill.querySelector("b")!, label: pill.querySelector("span")! };
+    shown = "";
+    if (settings.store.pillPos !== "top") pill.style.left = pill.style.top = "0";
 }
 
 export function drawOverlay(points: Pt[], x: number, y: number, keys: string, label: string | null) {
-    if (!root) return;
+    if (!root || !parts) return;
     const miss = !!keys && !label;
-    root.querySelector("g")!.innerHTML = trailMarkup(points, { plain: miss });
-    root.classList.toggle("vc-mg-overlay-nomatch", miss);
-    root.style.color = label && settings.store.matchColor ? settings.store.matchColor : settings.store.trailColor;
-    const pill = root.querySelector<HTMLDivElement>(".vc-mg-pill")!;
-    pill.hidden = !keys || settings.store.pillPos === "off";
-    if (!keys) return;
-    pill.querySelector("b")!.textContent = keys;
-    pill.querySelector("span")!.textContent = label ?? "No action";
-    pill.classList.toggle("vc-mg-pill-miss", !label);
-    if (settings.store.pillPos === "top") return;
-    pill.style.left = `${Math.min(x + 18, innerWidth - pill.offsetWidth - 8)}px`;
-    pill.style.top = `${y + 52 > innerHeight ? y - 44 : y + 18}px`;
+    parts.g.innerHTML = trailMarkup(points, { plain: miss });
+    const { pill } = parts;
+    const state = `${keys}|${label}`;
+    if (state !== shown) {
+        shown = state;
+        root.classList.toggle("vc-mg-overlay-nomatch", miss);
+        root.style.color = label && settings.store.matchColor ? settings.store.matchColor : settings.store.trailColor;
+        pill.hidden = !keys || settings.store.pillPos === "off";
+        parts.keys.textContent = keys;
+        parts.label.textContent = label ?? "No action";
+        pill.classList.toggle("vc-mg-pill-miss", !label);
+        pillWidth = pill.hidden ? 0 : pill.offsetWidth;
+    }
+    if (pill.hidden || settings.store.pillPos === "top") return;
+    pill.style.transform = `translate(${Math.round(Math.min(x + 18, innerWidth - pillWidth - 8))}px, ${Math.round(y + 52 > innerHeight ? y - 44 : y + 18)}px)`;
 }
 
 export function closeOverlay(matched: boolean) {
     const el = root;
     root = null;
+    parts = null;
     if (!el) return;
     el.classList.add(matched ? "vc-mg-overlay-done" : "vc-mg-overlay-miss");
     setTimeout(() => el.remove(), settings.store.fadeOut + 40);

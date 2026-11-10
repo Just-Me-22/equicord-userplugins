@@ -1,4 +1,5 @@
 .vc-mg-overlay {
+    contain: strict;
     position: fixed;
     inset: 0;
     z-index: 10001;
@@ -1567,4 +1568,86 @@
     background: transparent;
     color: var(--text-muted, #949ba4);
     font-size: 13px;
+}
+
+.vc-mg-glyph {
+    flex: none;
+    overflow: visible;
+}
+
+.vc-mg-glyph polyline {
+    fill: none;
+    stroke: var(--brand-500, #5865f2);
+    stroke-width: 2.2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+}
+
+.vc-mg-glyph circle {
+    fill: var(--interactive-active, #fff);
+}
+
+.vc-mg-cheat .vc-mg-glyph polyline {
+    stroke: var(--brand-360, #949cf7);
+}
+
+.vc-mg-cheat-row {
+    position: relative;
+    padding: 3px 6px;
+    border-radius: 6px;
+    overflow: hidden;
+}
+
+.vc-mg-cheat-row > * {
+    position: relative;
+}
+
+.vc-mg-cheat-on {
+    background: rgb(255 255 255 / 0.1);
+}
+
+.vc-mg-cheat-on::before,
+.vc-mg-radial-on::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: var(--brand-500, #5865f2);
+    opacity: 0.55;
+    transform-origin: left;
+    animation: vc-mg-dwell var(--vc-mg-dwell, 800ms) linear forwards;
+}
+
+.vc-mg-radial-item {
+    isolation: isolate;
+}
+
+.vc-mg-radial-on::before {
+    z-index: -1;
+    background: rgb(255 255 255 / 0.3);
+}
+
+@keyframes vc-mg-dwell {
+    from { transform: scaleX(0); }
+    to { transform: scaleX(1); }
+}
+
+.vc-mg-pill {
+    will-change: transform;
+}
+
+.vc-mgs-assign {
+    display: grid;
+    grid-template-columns: 110px minmax(0, 1fr);
+    align-items: center;
+    gap: 10px;
+    font-size: 14px;
+    font-weight: 600;
+}
+
+.vc-mgs-assign small {
+    grid-column: 2;
+    margin-top: -6px;
+    color: var(--text-muted, #949ba4);
+    font-size: 12px;
+    font-weight: 400;
 }

@@ -9,11 +9,11 @@ import { chooseFile, saveFile } from "@utils/web";
 import { Alerts, Modal, openModal, SelectedChannelStore, SelectedGuildStore, showToast, useRef, useState } from "@webpack/common";
 import type { CSSProperties, PointerEvent, ReactNode } from "react";
 
-import { Action, allActions, Command, COMMAND_KINDS, CommandKind, commandLabel, opt, OptionDef, resolve, setOpt } from "./actions";
+import { Action, allActions, Command, COMMAND_KINDS, CommandKind, commandLabel, opt, OptionDef, setOpt } from "./actions";
 import { MATERIALS, trailClass, trailMarkup, trailVars } from "./overlay";
 import { DEFAULT_BINDINGS, settings, strokeOptions } from "./settings";
-import { bestShape, isReady, MIN_LENGTH, normalize, pathLength, Point, SAMPLES, Shape, shapeAction, shapeIcon, threshold } from "./shapes";
-import { arrows, Stroke } from "./stroke";
+import { bestShape, hasGesture, isReady, MIN_LENGTH, normalize, pathLength, Point, readCommand, SAMPLES, Shape, shapeAction, shapeIcon, similar, templatesOf, threshold } from "./shapes";
+import { Stroke } from "./stroke";
 import { Context, Zone, ZONES } from "./zones";
 
 type Selection = { kind: "try"; } | { kind: "action"; id: string; redraw?: boolean; } | { kind: "shape"; id: string; };
@@ -22,16 +22,20 @@ const zoneLabel = (zone: Zone) => ZONES.find(z => z.id === zone)!.label;
 const builtins = () => allActions().filter(a => !a.custom && !a.plugin);
 const fromPlugins = () => allActions().filter(a => a.plugin);
 
-const clashWith = (action: Action, gesture: string) =>
-    allActions().find(a => a.id !== action.id && a.zone === action.zone && settings.store.bindings[a.id] === gesture);
+const clashWith = (action: Action, template: Point[]) =>
+    allActions().find(a => a.id !== action.id && a.zone === action.zone && templatesOf(a.id).some(t => similar(t, template)));
 
-function bind(action: Action, gesture: string) {
-    const next = { ...settings.store.bindings };
-    const clash = gesture && clashWith(action, gesture);
-    if (clash) delete next[clash.id];
-    if (gesture) next[action.id] = gesture;
-    else delete next[action.id];
-    settings.store.bindings = next;
+function bind(action: Action, template: Point[] | null) {
+    const arrows = { ...settings.store.bindings };
+    const drawn = { ...settings.store.drawn };
+    const clash = template && clashWith(action, template);
+    for (const id of clash ? [clash.id, action.id] : [action.id]) {
+        delete arrows[id];
+        delete drawn[id];
+    }
+    if (template) drawn[action.id] = [template];
+    settings.store.bindings = arrows;
+    settings.store.drawn = drawn;
 }
 
 function updateShape(id: string, change: Partial<Shape>) {
@@ -52,9 +56,16 @@ function Trail({ points, style, fade, uid, view }: { points: Point[]; style?: st
     );
 }
 
-export function Keys({ gesture }: { gesture?: string; }) {
-    if (!gesture) return <span className="vc-mg-keys vc-mg-keys-empty">Not set</span>;
-    return <span className="vc-mg-keys">{arrows(gesture).split(" ").map((a, i) => <kbd key={i}>{a}</kbd>)}</span>;
+function Glyph({ id, size = 24 }: { id: string; size?: number; }) {
+    const template = templatesOf(id)[0];
+    if (!template) return <span className="vc-mg-keys vc-mg-keys-empty">Not set</span>;
+    const [x, y] = shapeIcon([template[0]], size).split(",");
+    return (
+        <svg className="vc-mg-glyph" width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
+            <polyline points={shapeIcon(template, size)} />
+            <circle cx={x} cy={y} r={size / 10} />
+        </svg>
+    );
 }
 
 const STEP: Record<string, Point> = { L: [-1, 0], R: [1, 0], U: [0, -1], D: [0, 1], 7: [-0.71, -0.71], 9: [0.71, -0.71], 1: [-0.71, 0.71], 3: [0.71, 0.71] };
@@ -210,11 +221,47 @@ function DrawPad({ hint, onStroke, children, height = 220 }: { hint: string; onS
                 }}
             >
                 <Trail points={points} uid="pad" />
-                {gesture
-                    ? <span className="vc-mg-pad-read"><Keys gesture={gesture} /></span>
-                    : !points.length && <span className="vc-mg-pad-hint">{hint}</span>}
+                {!points.length && <span className="vc-mg-pad-hint">{hint}</span>}
             </div>
             {children}
+        </div>
+    );
+}
+
+function assign(template: Point[], from: Action | undefined, to: Action | undefined) {
+    const arrows = { ...settings.store.bindings };
+    const drawn = { ...settings.store.drawn };
+    for (const action of [from, to]) {
+        if (!action) continue;
+        delete arrows[action.id];
+        delete drawn[action.id];
+    }
+    if (to) drawn[to.id] = [template];
+    settings.store.bindings = arrows;
+    settings.store.drawn = drawn;
+}
+
+function ZoneAssign({ template, find }: { template: Point[]; find?(ctx: Context): Action | undefined; }) {
+    settings.use(["bindings", "drawn", "commands"]);
+    const everywhere = find?.({ zones: [], targets: {} }) ?? allActions().find(a => a.zone === "anywhere" && templatesOf(a.id).some(t => similar(t, template)));
+    return (
+        <div className="vc-mgs-box">
+            <h4>What this gesture does in each place</h4>
+            {ZONES.map(z => {
+                const list = allActions().filter(a => a.zone === z.id);
+                const found = find?.({ zones: z.id === "anywhere" ? [] : [z.id], targets: {} });
+                const current = found?.zone === z.id ? found : list.find(a => templatesOf(a.id).some(t => similar(t, template)));
+                return (
+                    <label key={z.id} className="vc-mgs-assign">
+                        <span>{z.label}</span>
+                        <select className="vc-mgs-select" value={current?.id ?? ""} onChange={e => assign(template, current, list.find(a => a.id === e.currentTarget.value))}>
+                            <option value="">{z.id === "anywhere" ? "Nothing" : "Same as Anywhere"}</option>
+                            {list.map(a => <option key={a.id} value={a.id}>{a.label}</option>)}
+                        </select>
+                        {!current && z.id !== "anywhere" && everywhere && <small>Runs “{everywhere.label}” here for now.</small>}
+                    </label>
+                );
+            })}
         </div>
     );
 }
@@ -227,28 +274,17 @@ function TryView() {
     return (
         <div className="vc-mgs-view">
             <h3>Try a gesture</h3>
-            <p className="vc-mgs-lede">Draw anything to see what it does in each place. Your shapes are checked first, then the arrow gestures.</p>
+            <p className="vc-mgs-lede">Draw any gesture, then choose what it does on messages, in the channel list and everywhere else.</p>
             <DrawPad hint="Draw here" height={280} onStroke={(points, gesture, loose) => setResult({ points, gesture, loose })}>
                 {result && (
                     <div className="vc-mgs-verdict">
                         <div className="vc-mgs-verdict-head">
                             {matched
                                 ? <><span className="vc-mgs-tag">◎ {matched.shape.name}</span><span>{Math.round(matched.score * 100)}% match: {matched.action.label}</span></>
-                                : <><Keys gesture={result.gesture} />{shape && <span className="vc-mgs-muted">Closest shape: {shape.shape.name}, {Math.max(0, Math.round(shape.score * 100))}%</span>}</>}
+                                : <span className="vc-mgs-muted">{shape ? `Closest of your shapes: ${shape.shape.name}, ${Math.max(0, Math.round(shape.score * 100))}%. Choose what this gesture does in each place:` : "Choose what this gesture does in each place:"}</span>}
                         </div>
-                        {!matched && (
-                            <ul className="vc-mgs-zone-results">
-                                {ZONES.map(z => {
-                                    const ctx: Context = { zones: z.id === "anywhere" ? [] : [z.id], targets: {} };
-                                    const action = result.gesture ? resolve(result.gesture, ctx, result.loose) : undefined;
-                                    return (
-                                        <li key={z.id}>
-                                            <span>{z.label}</span>
-                                            <span className={action ? undefined : "vc-mgs-muted"}>{action ? action.label + (action.zone !== z.id && z.id !== "anywhere" ? " (from Anywhere)" : "") : "Nothing"}</span>
-                                        </li>
-                                    );
-                                })}
-                            </ul>
+                        {!matched && pathLength(result.points) >= settings.store.stepSize && (
+                            <ZoneAssign template={normalize(result.points)} find={ctx => readCommand(result.points, result.gesture, result.loose, ctx)} />
                         )}
                     </div>
                 )}
@@ -342,15 +378,14 @@ function CommandFields({ command }: { command: Command; }) {
 }
 
 function ActionView({ action, startRedraw, onDeleted }: { action: Action; startRedraw?: boolean; onDeleted(): void; }) {
-    const { bindings, commands } = settings.use(["bindings", "commands"]);
+    const { commands } = settings.use(["bindings", "drawn", "commands"]);
     const [redraw, setRedraw] = useState(!!startRedraw);
-    const [draft, setDraft] = useState("");
-    const current = bindings[action.id];
+    const [draft, setDraft] = useState<Point[] | null>(null);
+    const current: Point[] | undefined = templatesOf(action.id)[0];
     const clash = draft ? clashWith(action, draft) : undefined;
-    const elsewhere = current ? allActions().filter(a => a.id !== action.id && a.zone !== action.zone && bindings[a.id] === current) : [];
     const command = action.custom ? commands.find(c => c.id === action.id) : undefined;
 
-    const finish = () => { setDraft(""); setRedraw(false); };
+    const finish = () => { setDraft(null); setRedraw(false); };
 
     return (
         <div className="vc-mgs-view">
@@ -358,10 +393,10 @@ function ActionView({ action, startRedraw, onDeleted }: { action: Action; startR
             <h3>{command ? commandLabel(command) : action.label}</h3>
 
             {redraw ? (
-                <DrawPad hint={current ? "Draw the new gesture" : "Draw the gesture for this"} onStroke={(_, gesture) => setDraft(gesture)}>
+                <DrawPad hint={current ? "Draw the new gesture" : "Draw the gesture for this"} onStroke={points => setDraft(pathLength(points) >= settings.store.stepSize ? normalize(points) : null)}>
                     <div className="vc-mg-pad-foot">
                         <span className={clash ? "vc-mg-warn" : undefined}>
-                            {!draft ? "Press inside the box and drag." : clash ? `${arrows(draft)} already does “${clash.label}” here. Saving moves it.` : `${arrows(draft)} for “${action.label}”.`}
+                            {!draft ? "Draw it once, the way you'll really draw it." : clash ? `That looks like the gesture for “${clash.label}” here. Saving moves it to this command.` : "Got it. Save, or draw again."}
                         </span>
                         <button className="vc-mg-button" onClick={finish}>Cancel</button>
                         <button className="vc-mg-button vc-mg-button-primary" disabled={!draft} onClick={() => { bind(action, draft); finish(); }}>Save</button>
@@ -369,11 +404,11 @@ function ActionView({ action, startRedraw, onDeleted }: { action: Action; startR
                 </DrawPad>
             ) : (
                 <>
-                    <GesturePreview gesture={current} />
+                    <GesturePreview sample={current} />
                     <div className="vc-mgs-current">
-                        <Keys gesture={current} />
+                        <span className="vc-mgs-muted">{current ? "It starts at the dot." : ""}</span>
                         <span className="vc-mgs-spacer" />
-                        <button className="vc-mg-button vc-mg-button-small" disabled={!current} onClick={() => bind(action, "")}>Clear</button>
+                        <button className="vc-mg-button vc-mg-button-small" disabled={!current} onClick={() => bind(action, null)}>Clear</button>
                         <button className="vc-mg-button vc-mg-button-small vc-mg-button-primary" onClick={() => setRedraw(true)}>{current ? "Redraw" : "Draw a gesture"}</button>
                     </div>
                 </>
@@ -388,18 +423,13 @@ function ActionView({ action, startRedraw, onDeleted }: { action: Action; startR
                 </div>
             )}
 
-            {elsewhere.length > 0 && (
-                <div className="vc-mgs-elsewhere">
-                    <h4>The same gesture elsewhere</h4>
-                    {elsewhere.map(a => <div key={a.id}><span className="vc-mgs-muted">{zoneLabel(a.zone)}</span><span>{a.label}</span></div>)}
-                </div>
-            )}
+            {current && !redraw && <ZoneAssign template={current} />}
             {!command && <p className="vc-mgs-muted">{ZONES.find(z => z.id === action.zone)!.hint}</p>}
 
             {command && (
                 <button className="vc-mg-button vc-mgs-danger" onClick={() => {
                     settings.store.commands = settings.store.commands.filter(c => c.id !== command.id);
-                    bind(action, "");
+                    bind(action, null);
                     onDeleted();
                 }}>Delete command</button>
             )}
@@ -541,7 +571,7 @@ function Swatches({ value, onPick, accent = true }: { value: string; onPick(v: s
 }
 
 function Feel() {
-    const s = settings.use(["steady", "steadyAmount", "trailOpacity", "trailGlow", "trailCap", "trailTaper", "tailLength", "fadeOut", "matchColor", "pillPos", "diagonals", "stepSize", "startDistance", "holdToMove", "readyRing", "cheatSheet", "cheatDelay", "trail", "trailColor", "trailColor2", "trailStyle", "trailFade", "trailWidth", "sound", "twoFingerSwipes", "swipeDistance"]);
+    const s = settings.use(["hoverRun", "steady", "steadyAmount", "trailOpacity", "trailGlow", "trailCap", "trailTaper", "tailLength", "fadeOut", "matchColor", "pillPos", "diagonals", "stepSize", "startDistance", "holdToMove", "readyRing", "cheatSheet", "cheatDelay", "trail", "trailColor", "trailColor2", "trailStyle", "trailFade", "trailWidth", "sound", "twoFingerSwipes", "swipeDistance"]);
     const look = `${s.trailStyle}${s.trailFade}${s.trailWidth}${s.trailColor}${s.trailColor2}${s.trailTaper}${s.tailLength}`;
 
     return (
@@ -600,6 +630,8 @@ function Feel() {
             <h3>Cheat sheet</h3>
             <Toggle label="Show when I pause" note="Stop mid-drag to list what you can draw from there." value={s.cheatSheet} onChange={v => settings.store.cheatSheet = v} />
             <Range label="Pause length" min={300} max={1500} step={50} value={s.cheatDelay} unit="ms" onChange={v => settings.store.cheatDelay = v} />
+            <Range label="Hover to run" min={0} max={2000} step={100} value={s.hoverRun} unit="ms" onChange={v => settings.store.hoverRun = v} />
+            <p className="vc-mgs-muted vc-mgs-hint">Rest the pointer on a command in the cheat sheet or a ring for this long and it runs. 0 turns that off, so you let go or click on it.</p>
 
             <h3>Extras</h3>
             <Toggle label="Tick sound" value={s.sound} onChange={v => settings.store.sound = v} />
@@ -634,7 +666,7 @@ function SectionHead({ title, count, open, onToggle, action }: { title: string; 
 }
 
 function Studio() {
-    const { bindings, shapes, commands } = settings.use(["bindings", "shapes", "commands"]);
+    const { shapes, commands } = settings.use(["bindings", "drawn", "shapes", "commands"]);
     const [sel, setSel] = useState<Selection>({ kind: "try" });
     const [open, setOpen] = useState<Partial<Record<Zone | "plugins", boolean>>>({ anywhere: true });
     const action = sel.kind === "action" ? allActions().find(a => a.id === sel.id) : undefined;
@@ -675,16 +707,16 @@ function Studio() {
                 <SectionHead title="Your commands" action={<button className="vc-mg-button vc-mg-button-small" onClick={newCommand}>New</button>} />
                 {!customs.length && <p className="vc-mgs-muted vc-mgs-empty">React with any emoji, type or send a saved text, open a link, or jump to a channel.</p>}
                 {customs.map(a => (
-                    <Row key={a.id} on={isOn(a.id)} onOpen={() => setSel({ kind: "action", id: a.id })} onEdit={() => setSel({ kind: "action", id: a.id, redraw: true })} keys={<Keys gesture={bindings[a.id]} />}>
+                    <Row key={a.id} on={isOn(a.id)} onOpen={() => setSel({ kind: "action", id: a.id })} onEdit={() => setSel({ kind: "action", id: a.id, redraw: true })} keys={<Glyph id={a.id} />}>
                         <span className="vc-mgs-row-text"><span>{a.label}</span></span>
                     </Row>
                 ))}
 
                 {fromPlugins().length > 0 && (
                     <div className="vc-mgs-zone">
-                        <SectionHead title="From plugins" count={`${fromPlugins().filter(a => bindings[a.id]).length}/${fromPlugins().length}`} open={open.plugins} onToggle={() => setOpen({ ...open, plugins: !open.plugins })} />
+                        <SectionHead title="From plugins" count={`${fromPlugins().filter(a => hasGesture(a.id)).length}/${fromPlugins().length}`} open={open.plugins} onToggle={() => setOpen({ ...open, plugins: !open.plugins })} />
                         {open.plugins && fromPlugins().map(a => (
-                            <Row key={a.id} on={isOn(a.id)} onOpen={() => setSel({ kind: "action", id: a.id })} onEdit={() => setSel({ kind: "action", id: a.id, redraw: true })} keys={<Keys gesture={bindings[a.id]} />}>
+                            <Row key={a.id} on={isOn(a.id)} onOpen={() => setSel({ kind: "action", id: a.id })} onEdit={() => setSel({ kind: "action", id: a.id, redraw: true })} keys={<Glyph id={a.id} />}>
                                 <span className="vc-mgs-row-text"><span>{a.label}</span><small>{a.zone === "messages" ? "On a message" : a.plugin}</small></span>
                             </Row>
                         ))}
@@ -696,9 +728,9 @@ function Studio() {
                     const expanded = open[z.id] ?? false;
                     return (
                         <div key={z.id} className="vc-mgs-zone">
-                            <SectionHead title={z.label} count={`${list.filter(a => bindings[a.id]).length}/${list.length}`} open={expanded} onToggle={() => setOpen({ ...open, [z.id]: !expanded })} />
+                            <SectionHead title={z.label} count={`${list.filter(a => hasGesture(a.id)).length}/${list.length}`} open={expanded} onToggle={() => setOpen({ ...open, [z.id]: !expanded })} />
                             {expanded && list.map(a => (
-                                <Row key={a.id} on={isOn(a.id)} onOpen={() => setSel({ kind: "action", id: a.id })} onEdit={() => setSel({ kind: "action", id: a.id, redraw: true })} keys={<Keys gesture={bindings[a.id]} />}>
+                                <Row key={a.id} on={isOn(a.id)} onOpen={() => setSel({ kind: "action", id: a.id })} onEdit={() => setSel({ kind: "action", id: a.id, redraw: true })} keys={<Glyph id={a.id} />}>
                                     <span className="vc-mgs-row-text"><span>{a.label}</span></span>
                                 </Row>
                             ))}
@@ -720,7 +752,7 @@ function Studio() {
     );
 }
 
-const FEEL_KEYS = ["steady", "steadyAmount", "trailOpacity", "trailGlow", "trailCap", "trailTaper", "tailLength", "fadeOut", "matchColor", "pillPos", "diagonals", "stepSize", "startDistance", "holdToMove", "readyRing", "cheatSheet", "cheatDelay", "reactEmoji", "trail", "trailColor", "trailColor2", "trailStyle", "trailFade", "trailWidth", "sound", "twoFingerSwipes", "swipeDistance"] as const;
+const FEEL_KEYS = ["hoverRun", "steady", "steadyAmount", "trailOpacity", "trailGlow", "trailCap", "trailTaper", "tailLength", "fadeOut", "matchColor", "pillPos", "diagonals", "stepSize", "startDistance", "holdToMove", "readyRing", "cheatSheet", "cheatDelay", "reactEmoji", "trail", "trailColor", "trailColor2", "trailStyle", "trailFade", "trailWidth", "sound", "twoFingerSwipes", "swipeDistance"] as const;
 
 function exportAll() {
     const store = settings.store as any;
@@ -728,6 +760,7 @@ function exportAll() {
         app: "MouseGestures",
         version: 2,
         bindings: settings.store.bindings,
+        drawn: settings.store.drawn,
         shapes: settings.store.shapes,
         commands: settings.store.commands,
         options: settings.store.options,
@@ -756,6 +789,9 @@ async function importAll() {
         .map((c: any) => ({ id: c.id, label: String(c.label ?? "").slice(0, 60), kind: c.kind, value: String(c.value ?? "").slice(0, 2000) }));
     const ids = new Set([...builtins().map(a => a.id), ...fromPlugins().map(a => a.id), ...commands.map(c => c.id)]);
     const bindings = Object.fromEntries(Object.entries(data.bindings ?? {}).filter(([id, g]) => ids.has(id) && validGesture(g))) as Record<string, string>;
+    const drawn = Object.fromEntries(Object.entries(data.drawn ?? {})
+        .filter(([id, list]) => ids.has(id) && Array.isArray(list) && list.length > 0 && list.every((x: any) => Array.isArray(x) && x.length === 32 && x.every(validPoint)))
+        .map(([id, list]) => [id, (list as Point[][]).slice(0, 3)])) as Record<string, Point[][]>;
     const shapes: Shape[] = (Array.isArray(data.shapes) ? data.shapes : [])
         .filter((s: any) => typeof s?.id === "string" && Array.isArray(s.samples) && s.samples.every((x: any) => Array.isArray(x) && x.every(validPoint)))
         .map((s: any) => ({ id: s.id, name: String(s.name ?? "Shape").slice(0, 40), samples: s.samples.slice(0, SAMPLES), action: ids.has(s.action) ? s.action : "" }));
@@ -763,12 +799,13 @@ async function importAll() {
 
     Alerts.show({
         title: "Replace your gestures?",
-        body: `This file has ${Object.keys(bindings).length} gestures, ${shapes.length} shapes and ${commands.length} commands. They replace everything in the studio now, including the Feel settings it carries.`,
+        body: `This file has ${Object.keys(bindings).length + Object.keys(drawn).length} gestures, ${shapes.length} shapes and ${commands.length} commands. They replace everything in the studio now, including the Feel settings it carries.`,
         confirmText: "Replace",
         cancelText: "Keep mine",
         onConfirm: () => {
             settings.store.commands = commands;
             settings.store.bindings = bindings;
+            settings.store.drawn = drawn;
             settings.store.shapes = shapes;
             settings.store.options = options as any;
             const store = settings.store as any;
@@ -787,7 +824,7 @@ export function openStudio() {
             {...modal}
             size="xxl"
             title="Gesture studio"
-            subtitle="Draw arrows or your own shapes, and give each one a job in each part of Discord."
+            subtitle="Draw a shape for each command. It can do a different job in each part of Discord."
             actions={[
                 { text: "Done", variant: "primary", onClick: modal.onClose },
                 { text: "Export", variant: "secondary", onClick: exportAll },
@@ -802,9 +839,9 @@ export function openStudio() {
 }
 
 export function StudioLauncher() {
-    const { bindings, shapes } = settings.use(["bindings", "shapes", "commands"]);
+    const { shapes } = settings.use(["bindings", "drawn", "shapes", "commands"]);
     const all = allActions();
-    const set = all.filter(a => bindings[a.id]).length;
+    const set = all.filter(a => hasGesture(a.id)).length;
     const ready = shapes.filter(isReady).length;
 
     return (
@@ -816,10 +853,10 @@ export function StudioLauncher() {
             <div className="vc-mgs-launch-actions">
                 <button className="vc-mg-button" onClick={() => Alerts.show({
                     title: "Reset every gesture?",
-                    body: "Every arrow gesture goes back to the defaults. Your shapes, commands and Feel settings stay.",
+                    body: "Every gesture goes back to the defaults, including the ones you drew. Your shapes, commands and Feel settings stay.",
                     confirmText: "Reset",
                     cancelText: "Cancel",
-                    onConfirm: () => settings.store.bindings = { ...DEFAULT_BINDINGS }
+                    onConfirm: () => { settings.store.bindings = { ...DEFAULT_BINDINGS }; settings.store.drawn = {}; }
                 })}>Reset gestures</button>
                 <button className="vc-mg-button vc-mg-button-primary" onClick={openStudio}>Open studio</button>
             </div>

@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
-import { Action, allActions } from "./actions";
+import { Action, allActions, resolve } from "./actions";
 import { settings } from "./settings";
 import { Context } from "./zones";
 
@@ -93,3 +93,59 @@ export const matchShape = (points: Point[], ctx: Context | null) => {
 
 export const shapeIcon = (sample: Point[], size = 24) =>
     sample.map(([x, y]) => `${(size / 2 + x * size * 0.75).toFixed(1)},${(size / 2 + y * size * 0.75).toFixed(1)}`).join(" ");
+
+const ARROW_STEP: Record<string, Point> = { L: [-1, 0], R: [1, 0], U: [0, -1], D: [0, 1], 7: [-0.71, -0.71], 9: [0.71, -0.71], 1: [-0.71, 0.71], 3: [0.71, 0.71] };
+const fromArrowsCache = new Map<string, Point[]>();
+
+function fromArrows(gesture: string) {
+    let template = fromArrowsCache.get(gesture);
+    if (!template) {
+        const line: Point[] = [[0, 0]];
+        for (const c of gesture) {
+            const [x, y] = line[line.length - 1];
+            line.push([x + ARROW_STEP[c][0], y + ARROW_STEP[c][1]]);
+        }
+        template = normalize(line);
+        fromArrowsCache.set(gesture, template);
+    }
+    return template;
+}
+
+export function templatesOf(id: string): Point[][] {
+    const drawn = settings.store.drawn?.[id];
+    if (drawn?.length) return drawn;
+    const arrows = settings.store.bindings[id];
+    return arrows ? [fromArrows(arrows)] : [];
+}
+
+export const hasGesture = (id: string) => templatesOf(id).length > 0;
+
+const likeness = (a: Point[], b: Point[]) => 1 - distance(a, b) / 0.35;
+
+export const similar = (a: Point[], b: Point[]) => likeness(a, b) >= threshold();
+
+export interface CommandMatch { action: Action; score: number; }
+
+export function bestCommand(points: Point[], ctx: Context, drawn = normalize(points)): CommandMatch | null {
+    const zones = [...ctx.zones, "anywhere"];
+    const found: (CommandMatch & { rank: number; })[] = [];
+    for (const action of allActions()) {
+        const rank = zones.indexOf(action.zone);
+        if (rank < 0) continue;
+        let score = -Infinity;
+        for (const template of templatesOf(action.id))
+            if (template.length === POINTS) score = Math.max(score, likeness(drawn, template));
+        if (score > -Infinity) found.push({ action, score, rank });
+    }
+    if (!found.length) return null;
+    const top = Math.max(...found.map(f => f.score));
+    return found.filter(f => f.score >= top - 0.04).sort((a, b) => a.rank - b.rank || b.score - a.score)[0];
+}
+
+export function readCommand(points: Point[], gesture: string, loose: string, ctx: Context): Action | undefined {
+    const long = points.length >= 3 && pathLength(points) >= settings.store.stepSize;
+    const match = long ? bestCommand(points, ctx) : null;
+    const shape = match && match.score >= threshold() ? match.action : undefined;
+    if (shape && settings.store.drawn?.[shape.id]?.length) return shape;
+    return (gesture ? resolve(gesture, ctx) : undefined) ?? shape ?? (gesture ? resolve(gesture, ctx, loose) : undefined);
+}
