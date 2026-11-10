@@ -38,6 +38,8 @@ export const DEFAULT_BINDINGS: Record<string, string> = {
 
 export const DEFAULTS_VERSION = 4;
 
+export const plain = <T,>(value: T): T => JSON.parse(JSON.stringify(value));
+
 export const settings = definePluginSettings({
     studio: {
         type: OptionType.COMPONENT,
@@ -142,6 +144,11 @@ export const settings = definePluginSettings({
         type: OptionType.CUSTOM,
         description: "",
         default: 16
+    },
+    holdStart: {
+        type: OptionType.CUSTOM,
+        description: "",
+        default: 300
     },
     holdToMove: {
         type: OptionType.CUSTOM,

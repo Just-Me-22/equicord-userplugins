@@ -11,7 +11,7 @@ import definePlugin from "@utils/types";
 
 import { Action, allActions, resolve } from "./actions";
 import { cheatContext, cheatMove, cheatOpen, cheatPick, hideCheat, pointer, setCheatRunner, showCheat } from "./cheat";
-import { closeOverlay, drawOverlay, dropReady, openOverlay, showReady, tick } from "./overlay";
+import { closeOverlay, drawOverlay, dropReady, openOverlay, readyGo, showReady, tick } from "./overlay";
 import { radialOpen } from "./radial";
 import { DEFAULT_BINDINGS, DEFAULTS_VERSION, settings, strokeOptions } from "./settings";
 import { matchShape, readCommand } from "./shapes";
@@ -57,6 +57,7 @@ function startsGesture(e: PointerEvent, ctx: Context) {
 
 let drag: {
     x: number; y: number; at: number; ctx: Context; stroke: Stroke; drawing: boolean; marked: Element | null; movable: Element | null;
+    armAt: number; goTimer?: ReturnType<typeof setTimeout>;
     armTimer?: ReturnType<typeof setTimeout>; readyTimer?: ReturnType<typeof setTimeout>; cheatTimer?: ReturnType<typeof setTimeout>; still?: [number, number];
 } | null = null;
 let swallowClick = false;
@@ -83,6 +84,7 @@ function run(action: Action | undefined, ctx: Context) {
 
 function disarm(d: NonNullable<typeof drag>) {
     clearTimeout(d.armTimer);
+    clearTimeout(d.goTimer);
     clearTimeout(d.readyTimer);
     clearTimeout(d.cheatTimer);
     dropReady();
@@ -135,15 +137,20 @@ function onPointerDown(e: PointerEvent) {
         x: e.clientX,
         y: e.clientY,
         at: e.timeStamp,
+        armAt: e.timeStamp + settings.store.holdStart,
         ctx,
         stroke: new Stroke(e.clientX, e.clientY, strokeOptions()),
         drawing: false,
         marked: null,
         movable: ctx.zones.length && !ctx.hit ? e.target.closest('[draggable="true"]') : null
     };
+    const hold = settings.store.holdStart;
     if (settings.store.readyRing) {
         const { clientX, clientY } = e;
-        drag.readyTimer = setTimeout(() => showReady(clientX, clientY), READY_DELAY);
+        if (hold > 0) {
+            showReady(clientX, clientY, hold);
+            drag.goTimer = setTimeout(readyGo, hold);
+        } else drag.readyTimer = setTimeout(() => showReady(clientX, clientY), READY_DELAY);
     }
     if (drag.movable) {
         const { movable } = drag;
@@ -172,6 +179,10 @@ function onPointerMove(e: PointerEvent) {
     }
     if (!drag.drawing) {
         if (Math.hypot(e.clientX - drag.x, e.clientY - drag.y) < settings.store.startDistance) return;
+        if (e.timeStamp < drag.armAt) {
+            end(false);
+            return;
+        }
         drag.drawing = true;
         matchedAt = 0;
         decided = { keys: "" };
@@ -195,7 +206,8 @@ function paint(now: number) {
     d.stroke.read();
     if (now - matchedAt >= MATCH_EVERY) {
         matchedAt = now;
-        getSelection()?.removeAllRanges();
+        const selection = getSelection();
+        if (selection && !selection.isCollapsed) selection.removeAllRanges();
         decided = decide(d.stroke, d.ctx);
         const { action } = decided;
         mark(action && action.zone !== "anywhere" ? d.ctx.targets[action.zone] : null);
@@ -207,6 +219,10 @@ function paint(now: number) {
 
 function onDragStart(e: DragEvent) {
     if (!drag) return;
+    if (!drag.drawing && e.timeStamp < drag.armAt) {
+        end(false);
+        return;
+    }
     if (e.timeStamp - drag.at >= settings.store.holdToMove) {
         disarm(drag);
         drag.marked?.classList.remove("vc-mg-target");

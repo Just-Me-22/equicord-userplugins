@@ -6,17 +6,18 @@
 
 import ErrorBoundary from "@components/ErrorBoundary";
 import { chooseFile, saveFile } from "@utils/web";
-import { Alerts, Modal, openModal, React, SelectedChannelStore, SelectedGuildStore, showToast, useRef, useState } from "@webpack/common";
+import { Alerts, Modal, openModal, React, SelectedChannelStore, SelectedGuildStore, showToast, useEffect, useRef, useState } from "@webpack/common";
 import type { CSSProperties, PointerEvent, ReactNode } from "react";
 
 import { Action, allActions, Command, COMMAND_KINDS, CommandKind, commandLabel, opt, OptionDef, setOpt } from "./actions";
 import { MATERIALS, trailClass, trailMarkup, trailVars } from "./overlay";
-import { DEFAULT_BINDINGS, settings, strokeOptions } from "./settings";
+import { LiveTrail, Spot } from "./preview";
+import { DEFAULT_BINDINGS, plain, settings, strokeOptions } from "./settings";
 import { bestShape, hasGesture, isReady, MIN_LENGTH, normalize, pathLength, Point, readCommand, SAMPLES, Shape, shapeAction, shapeIcon, similar, templatesOf, threshold } from "./shapes";
 import { Stroke } from "./stroke";
 import { Context, Zone, ZONES } from "./zones";
 
-type Selection = { kind: "try"; } | { kind: "action"; id: string; redraw?: boolean; } | { kind: "shape"; id: string; };
+type Selection = { kind: "try"; } | { kind: "action"; id: string; redraw?: number; } | { kind: "shape"; id: string; };
 
 const zoneLabel = (zone: Zone) => ZONES.find(z => z.id === zone)!.label;
 const builtins = () => allActions().filter(a => !a.custom && !a.plugin);
@@ -34,16 +35,16 @@ function bind(action: Action, template: Point[] | null) {
         delete drawn[id];
     }
     if (template) drawn[action.id] = [template];
-    settings.store.bindings = arrows;
-    settings.store.drawn = drawn;
+    settings.store.bindings = plain(arrows);
+    settings.store.drawn = plain(drawn);
 }
 
 function updateShape(id: string, change: Partial<Shape>) {
-    settings.store.shapes = settings.store.shapes.map(s => s.id === id ? { ...s, ...change } : s);
+    settings.store.shapes = plain(settings.store.shapes.map(s => s.id === id ? { ...s, ...change } : s));
 }
 
 function updateCommand(id: string, change: Partial<Command>) {
-    settings.store.commands = settings.store.commands.map(c => c.id === id ? { ...c, ...change } : c);
+    settings.store.commands = plain(settings.store.commands.map(c => c.id === id ? { ...c, ...change } : c));
 }
 
 const trailStyle = () => ({ color: settings.store.trailColor || undefined, ...trailVars() }) as CSSProperties;
@@ -163,13 +164,33 @@ function Toggle({ label, note, value, onChange }: { label: string; note?: string
     );
 }
 
+const Minus = () => <svg viewBox="0 0 12 12" aria-hidden><path d="M2.5 6h7" /></svg>;
+const Plus = () => <svg viewBox="0 0 12 12" aria-hidden><path d="M2.5 6h7M6 2.5v7" /></svg>;
+
 function Range({ label, min, max, step, value, unit, onChange }: { label: string; min: number; max: number; step: number; value: number; unit: string; onChange(v: number): void; }) {
-    const shown = Math.round(value / step) * step;
+    const shown = Math.min(max, Math.max(min, Math.round(value / step) * step));
+    const nudge = (by: number) => onChange(Math.min(max, Math.max(min, shown + by * step)));
     return (
-        <label className="vc-mgs-range">
-            <span>{label}<b>{shown}{unit}</b></span>
-            <input type="range" min={min} max={max} step={step} value={shown} onChange={e => onChange(Number(e.currentTarget.value))} />
-        </label>
+        <div className="vc-mgs-range">
+            <div className="vc-mgs-range-head">
+                <span>{label}</span>
+                <output>{shown}{unit}</output>
+            </div>
+            <div className="vc-mgs-range-row">
+                <button type="button" className="vc-mgs-nudge" aria-label={`Lower ${label}`} disabled={shown <= min} onClick={() => nudge(-1)}><Minus /></button>
+                <input
+                    type="range"
+                    aria-label={label}
+                    min={min}
+                    max={max}
+                    step={step}
+                    value={shown}
+                    style={{ "--vc-mgs-fill": (shown - min) / (max - min) } as CSSProperties}
+                    onChange={e => onChange(Number(e.currentTarget.value))}
+                />
+                <button type="button" className="vc-mgs-nudge" aria-label={`Raise ${label}`} disabled={shown >= max} onClick={() => nudge(1)}><Plus /></button>
+            </div>
+        </div>
     );
 }
 
@@ -237,8 +258,8 @@ function assign(template: Point[], from: Action | undefined, to: Action | undefi
         delete drawn[action.id];
     }
     if (to) drawn[to.id] = [template];
-    settings.store.bindings = arrows;
-    settings.store.drawn = drawn;
+    settings.store.bindings = plain(arrows);
+    settings.store.drawn = plain(drawn);
 }
 
 function ZoneAssign({ template, find }: { template: Point[]; find?(ctx: Context): Action | undefined; }) {
@@ -276,7 +297,18 @@ const commandChoices = (exclude?: string): Choice[] =>
 function Picker({ value, options, empty, onChange }: { value: string; options: Choice[]; empty?: string; onChange(value: string): void; }) {
     const [open, setOpen] = useState(false);
     const [query, setQuery] = useState("");
+    const box = useRef<HTMLDivElement>(null);
     const current = options.find(o => o.value === value);
+
+    useEffect(() => {
+        if (!open) return;
+        const away = (e: MouseEvent) => {
+            if (!box.current?.contains(e.target as Node)) setOpen(false);
+        };
+        document.addEventListener("mousedown", away, true);
+        box.current?.querySelector(".vc-mgs-picker-on")?.scrollIntoView({ block: "nearest" });
+        return () => document.removeEventListener("mousedown", away, true);
+    }, [open]);
     const shown = options.filter(o => !query || o.label.toLowerCase().includes(query.toLowerCase()));
     const choose = (v: string) => {
         onChange(v);
@@ -286,7 +318,7 @@ function Picker({ value, options, empty, onChange }: { value: string; options: C
     let group: string | undefined;
 
     return (
-        <div className={open ? "vc-mgs-picker vc-mgs-picker-open" : "vc-mgs-picker"}>
+        <div ref={box} className={open ? "vc-mgs-picker vc-mgs-picker-open" : "vc-mgs-picker"}>
             <button type="button" className="vc-mgs-picker-button" aria-expanded={open} onClick={() => setOpen(!open)}>
                 <span className={current ? undefined : "vc-mgs-muted"}>{current?.label ?? empty ?? "Choose"}</span>
                 <span aria-hidden>{open ? "▴" : "▾"}</span>
@@ -480,7 +512,7 @@ function ActionView({ action, startRedraw, onDeleted }: { action: Action; startR
 
             {command && (
                 <button className="vc-mg-button vc-mgs-danger" onClick={() => {
-                    settings.store.commands = settings.store.commands.filter(c => c.id !== command.id);
+                    settings.store.commands = plain(settings.store.commands.filter(c => c.id !== command.id));
                     bind(action, null);
                     onDeleted();
                 }}>Delete command</button>
@@ -546,7 +578,7 @@ function ShapeView({ shape, onDeleted }: { shape: Shape; onDeleted(): void; }) {
                 {action ? action.zone === "anywhere" ? "Works anywhere you can draw." : `Works when you start in: ${zoneLabel(action.zone)}.` : "It does nothing until you choose an action."}
             </p>
             <button className="vc-mg-button vc-mgs-danger" onClick={() => {
-                settings.store.shapes = settings.store.shapes.filter(s => s.id !== shape.id);
+                settings.store.shapes = plain(settings.store.shapes.filter(s => s.id !== shape.id));
                 onDeleted();
             }}>Delete shape</button>
         </div>
@@ -597,7 +629,6 @@ const wave = (w: number, h: number, n = 48): Point[] => Array.from({ length: n }
     return [8 + t * (w - 16), h / 2 + Math.sin(t * Math.PI * 2.2) * (h / 2 - 9)] as Point;
 });
 
-const SAMPLE = wave(240, 72, 64);
 const TILE = wave(80, 36, 36);
 
 function Swatches({ value, onPick, accent = true }: { value: string; onPick(v: string): void; accent?: boolean; }) {
@@ -615,73 +646,171 @@ function Swatches({ value, onPick, accent = true }: { value: string; onPick(v: s
     );
 }
 
+const LOOK = ["trail", "trailStyle", "trailFade", "trailWidth", "trailColor", "trailColor2", "trailTaper", "tailLength", "trailOpacity", "trailGlow", "trailCap", "matchColor", "pillPos", "fadeOut", "holdStart", "readyRing", "startDistance"] as const;
+const SPOTS: Partial<Record<typeof LOOK[number], Spot>> = { fadeOut: "fade", holdStart: "ready", readyRing: "ready", startDistance: "reach" };
+
+function LivePreview() {
+    const s = settings.use([...LOOK]);
+    const canvas = useRef<HTMLCanvasElement>(null);
+    const live = useRef<LiveTrail | null>(null);
+    const [name, setName] = useState("");
+    const values = LOOK.map(k => s[k]);
+    const last = useRef(values);
+
+    useEffect(() => {
+        const trail = new LiveTrail(canvas.current!, setName);
+        live.current = trail;
+        return () => trail.stop();
+    }, []);
+
+    useEffect(() => {
+        const changed = LOOK.find((_, i) => last.current[i] !== values[i]);
+        last.current = values;
+        if (changed) live.current?.spot(SPOTS[changed] ?? "still");
+    });
+
+    const local = (e: PointerEvent) => {
+        const r = e.currentTarget.getBoundingClientRect();
+        return [e.clientX - r.left, e.clientY - r.top] as const;
+    };
+
+    return (
+        <div className="vc-mgs-live">
+            <div className="vc-mgs-live-stage">
+                <canvas
+                    ref={canvas}
+                    className="vc-mgs-live-canvas"
+                    aria-label="Trail preview. Draw on it to try a gesture."
+                    onPointerDown={e => {
+                        e.currentTarget.setPointerCapture(e.pointerId);
+                        live.current?.down(...local(e));
+                    }}
+                    onPointerMove={e => live.current?.move(...local(e))}
+                    onPointerUp={() => live.current?.up()}
+                    onPointerCancel={() => live.current?.up()}
+                />
+                {!s.trail && <span className="vc-mgs-live-off">The trail is off. Gestures still work.</span>}
+            </div>
+            <div className="vc-mgs-live-foot">
+                <span>{name}</span>
+                <span className="vc-mgs-muted">Draw on it to try</span>
+            </div>
+        </div>
+    );
+}
+
+const PARTS = [
+    { id: "trail", label: "Trail" },
+    { id: "drawing", label: "Drawing" },
+    { id: "cheat", label: "Cheat sheet" },
+    { id: "extras", label: "Extras" }
+];
+
 function Feel() {
-    const s = settings.use(["hoverRun", "steady", "steadyAmount", "trailOpacity", "trailGlow", "trailCap", "trailTaper", "tailLength", "fadeOut", "matchColor", "pillPos", "diagonals", "stepSize", "startDistance", "holdToMove", "readyRing", "cheatSheet", "cheatDelay", "trail", "trailColor", "trailColor2", "trailStyle", "trailFade", "trailWidth", "sound", "twoFingerSwipes", "swipeDistance"]);
+    const s = settings.use(["holdStart", "hoverRun", "steady", "steadyAmount", "trailOpacity", "trailGlow", "trailCap", "trailTaper", "tailLength", "fadeOut", "matchColor", "pillPos", "diagonals", "stepSize", "startDistance", "holdToMove", "readyRing", "cheatSheet", "cheatDelay", "trail", "trailColor", "trailColor2", "trailStyle", "trailFade", "trailWidth", "sound", "twoFingerSwipes", "swipeDistance"]);
     const look = `${s.trailStyle}${s.trailFade}${s.trailWidth}${s.trailColor}${s.trailColor2}${s.trailTaper}${s.tailLength}`;
+    const body = useRef<HTMLDivElement>(null);
+    const jumping = useRef(0);
+    const [part, setPart] = useState("trail");
+
+    const spy = () => {
+        const el = body.current;
+        if (!el || Date.now() < jumping.current) return;
+        const parts = [...el.querySelectorAll<HTMLElement>("[data-part]")];
+        const atEnd = el.scrollTop + el.clientHeight >= el.scrollHeight - 2;
+        const on = atEnd ? parts[parts.length - 1] : parts.filter(p => p.offsetTop - el.scrollTop <= 32).pop() ?? parts[0];
+        if (on) setPart(on.dataset.part!);
+    };
+
+    const jump = (id: string) => {
+        const el = body.current;
+        const target = el?.querySelector<HTMLElement>(`[data-part="${id}"]`);
+        if (!el || !target) return;
+        jumping.current = Date.now() + 700;
+        el.scrollTo({ top: target.offsetTop - 12, behavior: CALM.matches ? "auto" : "smooth" });
+        setPart(id);
+    };
 
     return (
         <div className="vc-mgs-feel">
-            <h3>Trail</h3>
-            <Toggle label="Show the trail" value={s.trail} onChange={v => settings.store.trail = v} />
-            <div className={s.trail ? "vc-mg-trail-settings" : "vc-mg-trail-settings vc-mg-off"}>
-                <div className="vc-mg-sample" style={trailStyle()}>
-                    <Trail key={look} points={SAMPLE} uid="sample" view={[240, 72]} />
-                </div>
-                <span className="vc-mgs-label">Material</span>
-                <div className="vc-mgs-materials" role="radiogroup" aria-label="Trail material">
-                    {MATERIALS.map(m => (
-                        <button key={m.value} role="radio" aria-checked={s.trailStyle === m.value} className={s.trailStyle === m.value ? "vc-mgs-material vc-mgs-material-on" : "vc-mgs-material"} style={trailStyle()} onClick={() => settings.store.trailStyle = m.value}>
-                            <Trail key={look} points={TILE} style={m.value} fade="full" uid={`tile-${m.value}`} view={[80, 36]} />
-                            <span>{m.label}</span>
-                        </button>
+            <div className="vc-mgs-pin">
+                <Toggle label="Show the trail" value={s.trail} onChange={v => settings.store.trail = v} />
+                <LivePreview />
+                <nav className="vc-mgs-chips" aria-label="Settings sections">
+                    {PARTS.map(p => (
+                        <button key={p.id} type="button" aria-current={part === p.id} onClick={() => jump(p.id)}>{p.label}</button>
                     ))}
-                </div>
-                <span className="vc-mgs-label">{s.trailStyle === "gradient" ? "Start colour" : "Colour"}</span>
-                <Swatches value={s.trailColor} onPick={v => settings.store.trailColor = v} />
-                {s.trailStyle === "gradient" && <>
-                    <span className="vc-mgs-label">End colour</span>
-                    <Swatches value={s.trailColor2} accent={false} onPick={v => settings.store.trailColor2 = v} />
-                </>}
-                <span className="vc-mgs-label">Fade</span>
-                <Choice options={FADES} value={s.trailFade} onPick={v => settings.store.trailFade = v} />
-                {s.trailFade === "tail" && <Range label="Tail length" min={12} max={160} step={4} value={s.tailLength} unit=" pts" onChange={v => settings.store.tailLength = v} />}
-                <Range label="Thickness" min={2} max={12} step={1} value={s.trailWidth} unit="px" onChange={v => settings.store.trailWidth = v} />
-                <Toggle label="Taper" note="Thin at the start, full width at your finger." value={s.trailTaper} onChange={v => settings.store.trailTaper = v} />
-                <span className="vc-mgs-label">Line ends</span>
-                <Choice options={CAPS} value={s.trailCap} onPick={v => settings.store.trailCap = v} />
-                <Range label="Opacity" min={20} max={100} step={5} value={s.trailOpacity} unit="%" onChange={v => settings.store.trailOpacity = v} />
-                <Range label="Glow" min={0} max={20} step={1} value={s.trailGlow} unit="px" onChange={v => settings.store.trailGlow = v} />
-                <Range label="Fade out" min={80} max={900} step={20} value={s.fadeOut} unit="ms" onChange={v => settings.store.fadeOut = v} />
-                <span className="vc-mgs-label">Colour once it matches</span>
-                <MatchSwatches value={s.matchColor} onPick={v => settings.store.matchColor = v} />
-                <span className="vc-mgs-label">Action label</span>
-                <Choice options={PILLS} value={s.pillPos} onPick={v => settings.store.pillPos = v} />
+                </nav>
             </div>
 
-            <h3>Drawing</h3>
-            <Toggle label="Diagonals" note="↖ ↗ ↙ ↘ count as their own directions." value={s.diagonals} onChange={v => settings.store.diagonals = v} />
-            <Toggle label="Steady hand" note="Reads the overall shape of your stroke and ignores shakes, wobbles and tilted lines." value={s.steady} onChange={v => settings.store.steady = v} />
-            {s.steady && <>
-                <Range label="Shake filter" min={10} max={100} step={5} value={s.steadyAmount} unit="%" onChange={v => settings.store.steadyAmount = v} />
-                <p className="vc-mgs-muted vc-mgs-hint">Higher forgives bigger shakes, but very small turns in a gesture start to get ignored too.</p>
-            </>}
-            <Range label="Smallest gesture" min={8} max={70} step={1} value={s.stepSize} unit="px" onChange={v => settings.store.stepSize = v} />
-            <p className="vc-mgs-muted vc-mgs-hint">The smallest stroke that counts. Lower it to draw tiny gestures.</p>
-            <Range label="Start after" min={4} max={40} step={1} value={s.startDistance} unit="px" onChange={v => settings.store.startDistance = v} />
-            <p className="vc-mgs-muted vc-mgs-hint">How far you move before drawing starts. A small wiggle that ends where it began still counts as a click.</p>
-            <Range label="Hold before moving" min={200} max={2000} step={50} value={s.holdToMove} unit="ms" onChange={v => settings.store.holdToMove = v} />
-            <Toggle label="Ready ring" note="Fills where a gesture can start." value={s.readyRing} onChange={v => settings.store.readyRing = v} />
+            <div ref={body} className="vc-mgs-feel-body" onScroll={spy}>
+                <section data-part="trail" className={s.trail ? "vc-mgs-part" : "vc-mgs-part vc-mg-off"}>
+                    <h3>Trail</h3>
+                    <span className="vc-mgs-label">Material</span>
+                    <div className="vc-mgs-materials" role="radiogroup" aria-label="Trail material">
+                        {MATERIALS.map(m => (
+                            <button key={m.value} role="radio" aria-checked={s.trailStyle === m.value} className={s.trailStyle === m.value ? "vc-mgs-material vc-mgs-material-on" : "vc-mgs-material"} style={trailStyle()} onClick={() => settings.store.trailStyle = m.value}>
+                                <Trail key={look} points={TILE} style={m.value} fade="full" uid={`tile-${m.value}`} view={[80, 36]} />
+                                <span>{m.label}</span>
+                            </button>
+                        ))}
+                    </div>
+                    <span className="vc-mgs-label">{s.trailStyle === "gradient" ? "Start colour" : "Colour"}</span>
+                    <Swatches value={s.trailColor} onPick={v => settings.store.trailColor = v} />
+                    {s.trailStyle === "gradient" && <>
+                        <span className="vc-mgs-label">End colour</span>
+                        <Swatches value={s.trailColor2} accent={false} onPick={v => settings.store.trailColor2 = v} />
+                    </>}
+                    <span className="vc-mgs-label">Fade</span>
+                    <Choice options={FADES} value={s.trailFade} onPick={v => settings.store.trailFade = v} />
+                    {s.trailFade === "tail" && <Range label="Tail length" min={12} max={160} step={4} value={s.tailLength} unit=" pts" onChange={v => settings.store.tailLength = v} />}
+                    <Range label="Thickness" min={2} max={12} step={1} value={s.trailWidth} unit="px" onChange={v => settings.store.trailWidth = v} />
+                    <Toggle label="Taper" note="Thin at the start, full width at your finger." value={s.trailTaper} onChange={v => settings.store.trailTaper = v} />
+                    <span className="vc-mgs-label">Line ends</span>
+                    <Choice options={CAPS} value={s.trailCap} onPick={v => settings.store.trailCap = v} />
+                    <Range label="Opacity" min={20} max={100} step={5} value={s.trailOpacity} unit="%" onChange={v => settings.store.trailOpacity = v} />
+                    <Range label="Glow" min={0} max={20} step={1} value={s.trailGlow} unit="px" onChange={v => settings.store.trailGlow = v} />
+                    <Range label="Fade out" min={80} max={900} step={20} value={s.fadeOut} unit="ms" onChange={v => settings.store.fadeOut = v} />
+                    <span className="vc-mgs-label">Colour once it matches</span>
+                    <MatchSwatches value={s.matchColor} onPick={v => settings.store.matchColor = v} />
+                    <span className="vc-mgs-label">Action label</span>
+                    <Choice options={PILLS} value={s.pillPos} onPick={v => settings.store.pillPos = v} />
+                </section>
 
-            <h3>Cheat sheet</h3>
-            <Toggle label="Show when I pause" note="Stop mid-drag to list what you can draw from there." value={s.cheatSheet} onChange={v => settings.store.cheatSheet = v} />
-            <Range label="Pause length" min={300} max={1500} step={50} value={s.cheatDelay} unit="ms" onChange={v => settings.store.cheatDelay = v} />
-            <Range label="Hover to run" min={0} max={2000} step={100} value={s.hoverRun} unit="ms" onChange={v => settings.store.hoverRun = v} />
-            <p className="vc-mgs-muted vc-mgs-hint">Rest the pointer on a command in the cheat sheet or a ring for this long and it runs. 0 turns that off, so you let go or click on it.</p>
+                <section data-part="drawing" className="vc-mgs-part">
+                    <h3>Drawing</h3>
+                    <Toggle label="Diagonals" note="↖ ↗ ↙ ↘ count as their own directions." value={s.diagonals} onChange={v => settings.store.diagonals = v} />
+                    <Toggle label="Steady hand" note="Reads the overall shape of your stroke and ignores shakes, wobbles and tilted lines." value={s.steady} onChange={v => settings.store.steady = v} />
+                    {s.steady && <>
+                        <Range label="Shake filter" min={10} max={100} step={5} value={s.steadyAmount} unit="%" onChange={v => settings.store.steadyAmount = v} />
+                        <p className="vc-mgs-muted vc-mgs-hint">Higher forgives bigger shakes, but very small turns in a gesture start to get ignored too.</p>
+                    </>}
+                    <Range label="Smallest gesture" min={8} max={70} step={1} value={s.stepSize} unit="px" onChange={v => settings.store.stepSize = v} />
+                    <p className="vc-mgs-muted vc-mgs-hint">The smallest stroke that counts. Lower it to draw tiny gestures.</p>
+                    <Range label="Start after" min={4} max={40} step={1} value={s.startDistance} unit="px" onChange={v => settings.store.startDistance = v} />
+                    <p className="vc-mgs-muted vc-mgs-hint">How far you move before drawing starts. The preview shows it as a ring. A small wiggle that ends where it began still counts as a click.</p>
+                    <Range label="Hold before drawing" min={0} max={1000} step={50} value={s.holdStart} unit="ms" onChange={v => settings.store.holdStart = v} />
+                    <p className="vc-mgs-muted vc-mgs-hint">Press and stay still this long before a gesture can start. The ready ring fills while you wait and grows when you can draw. A drag that starts sooner is left alone. 0 starts gestures right away.</p>
+                    <Range label="Hold before moving" min={200} max={2000} step={50} value={s.holdToMove} unit="ms" onChange={v => settings.store.holdToMove = v} />
+                    <p className="vc-mgs-muted vc-mgs-hint">On servers, tabs and other things you can drag: hold still this long to pick the item up and move it instead.</p>
+                    <Toggle label="Ready ring" note="Fills where a gesture can start." value={s.readyRing} onChange={v => settings.store.readyRing = v} />
+                </section>
 
-            <h3>Extras</h3>
-            <Toggle label="Tick sound" value={s.sound} onChange={v => settings.store.sound = v} />
-            <Toggle label="Two-finger swipes" note="Sideways swipes run → and ←." value={s.twoFingerSwipes} onChange={v => settings.store.twoFingerSwipes = v} />
-            {s.twoFingerSwipes && <Range label="Swipe distance" min={60} max={260} step={10} value={s.swipeDistance} unit="px" onChange={v => settings.store.swipeDistance = v} />}
+                <section data-part="cheat" className="vc-mgs-part">
+                    <h3>Cheat sheet</h3>
+                    <Toggle label="Show when I pause" note="Stop mid-drag to list what you can draw from there." value={s.cheatSheet} onChange={v => settings.store.cheatSheet = v} />
+                    <Range label="Pause length" min={300} max={1500} step={50} value={s.cheatDelay} unit="ms" onChange={v => settings.store.cheatDelay = v} />
+                    <Range label="Hover to run" min={0} max={2000} step={100} value={s.hoverRun} unit="ms" onChange={v => settings.store.hoverRun = v} />
+                    <p className="vc-mgs-muted vc-mgs-hint">Rest the pointer on a command in the cheat sheet or a ring for this long and it runs. 0 turns that off, so you let go or click on it.</p>
+                </section>
+
+                <section data-part="extras" className="vc-mgs-part">
+                    <h3>Extras</h3>
+                    <Toggle label="Tick sound" value={s.sound} onChange={v => settings.store.sound = v} />
+                    <Toggle label="Two-finger swipes" note="Sideways swipes run → and ←." value={s.twoFingerSwipes} onChange={v => settings.store.twoFingerSwipes = v} />
+                    {s.twoFingerSwipes && <Range label="Swipe distance" min={60} max={260} step={10} value={s.swipeDistance} unit="px" onChange={v => settings.store.swipeDistance = v} />}
+                </section>
+            </div>
         </div>
     );
 }
@@ -720,13 +849,13 @@ function Studio() {
 
     const newShape = () => {
         const id = Date.now().toString(36);
-        settings.store.shapes = [...settings.store.shapes, { id, name: `Shape ${shapes.length + 1}`, samples: [], action: "" }];
+        settings.store.shapes = plain([...settings.store.shapes, { id, name: `Shape ${shapes.length + 1}`, samples: [], action: "" }]);
         setSel({ kind: "shape", id });
     };
 
     const newCommand = () => {
         const id = `custom.${Date.now().toString(36)}`;
-        settings.store.commands = [...commands, { id, label: "", kind: "react", value: "" }];
+        settings.store.commands = plain([...commands, { id, label: "", kind: "react", value: "" }]);
         setSel({ kind: "action", id });
     };
 
@@ -752,7 +881,7 @@ function Studio() {
                 <SectionHead title="Your commands" action={<button className="vc-mg-button vc-mg-button-small" onClick={newCommand}>New</button>} />
                 {!customs.length && <p className="vc-mgs-muted vc-mgs-empty">React with any emoji, type or send a saved text, open a link, or jump to a channel.</p>}
                 {customs.map(a => (
-                    <Row key={a.id} on={isOn(a.id)} onOpen={() => setSel({ kind: "action", id: a.id })} onEdit={() => setSel({ kind: "action", id: a.id, redraw: true })} keys={<Glyph id={a.id} />}>
+                    <Row key={a.id} on={isOn(a.id)} onOpen={() => setSel({ kind: "action", id: a.id })} onEdit={() => setSel({ kind: "action", id: a.id, redraw: Date.now() })} keys={<Glyph id={a.id} />}>
                         <span className="vc-mgs-row-text"><span>{a.label}</span></span>
                     </Row>
                 ))}
@@ -761,7 +890,7 @@ function Studio() {
                     <div className="vc-mgs-zone">
                         <SectionHead title="From plugins" count={`${fromPlugins().filter(a => hasGesture(a.id)).length}/${fromPlugins().length}`} open={open.plugins} onToggle={() => setOpen({ ...open, plugins: !open.plugins })} />
                         {open.plugins && fromPlugins().map(a => (
-                            <Row key={a.id} on={isOn(a.id)} onOpen={() => setSel({ kind: "action", id: a.id })} onEdit={() => setSel({ kind: "action", id: a.id, redraw: true })} keys={<Glyph id={a.id} />}>
+                            <Row key={a.id} on={isOn(a.id)} onOpen={() => setSel({ kind: "action", id: a.id })} onEdit={() => setSel({ kind: "action", id: a.id, redraw: Date.now() })} keys={<Glyph id={a.id} />}>
                                 <span className="vc-mgs-row-text"><span>{a.label}</span><small>{a.zone === "messages" ? "On a message" : a.plugin}</small></span>
                             </Row>
                         ))}
@@ -775,7 +904,7 @@ function Studio() {
                         <div key={z.id} className="vc-mgs-zone">
                             <SectionHead title={z.label} count={`${list.filter(a => hasGesture(a.id)).length}/${list.length}`} open={expanded} onToggle={() => setOpen({ ...open, [z.id]: !expanded })} />
                             {expanded && list.map(a => (
-                                <Row key={a.id} on={isOn(a.id)} onOpen={() => setSel({ kind: "action", id: a.id })} onEdit={() => setSel({ kind: "action", id: a.id, redraw: true })} keys={<Glyph id={a.id} />}>
+                                <Row key={a.id} on={isOn(a.id)} onOpen={() => setSel({ kind: "action", id: a.id })} onEdit={() => setSel({ kind: "action", id: a.id, redraw: Date.now() })} keys={<Glyph id={a.id} />}>
                                     <span className="vc-mgs-row-text"><span>{a.label}</span></span>
                                 </Row>
                             ))}
@@ -785,7 +914,7 @@ function Studio() {
             </nav>
             <section className="vc-mgs-detail" aria-live="polite">
                 <ErrorBoundary noop>
-                    {action ? <ActionView key={`${action.id}${sel.kind === "action" && sel.redraw ? "-r" : ""}`} action={action} startRedraw={sel.kind === "action" && sel.redraw} onDeleted={() => setSel({ kind: "try" })} />
+                    {action ? <ActionView key={`${action.id}-${sel.kind === "action" ? sel.redraw ?? 0 : 0}`} action={action} startRedraw={sel.kind === "action" && !!sel.redraw} onDeleted={() => setSel({ kind: "try" })} />
                         : shape ? <ShapeView key={shape.id} shape={shape} onDeleted={() => setSel({ kind: "try" })} />
                             : <TryView />}
                 </ErrorBoundary>
@@ -797,7 +926,7 @@ function Studio() {
     );
 }
 
-const FEEL_KEYS = ["hoverRun", "steady", "steadyAmount", "trailOpacity", "trailGlow", "trailCap", "trailTaper", "tailLength", "fadeOut", "matchColor", "pillPos", "diagonals", "stepSize", "startDistance", "holdToMove", "readyRing", "cheatSheet", "cheatDelay", "reactEmoji", "trail", "trailColor", "trailColor2", "trailStyle", "trailFade", "trailWidth", "sound", "twoFingerSwipes", "swipeDistance"] as const;
+const FEEL_KEYS = ["holdStart", "hoverRun", "steady", "steadyAmount", "trailOpacity", "trailGlow", "trailCap", "trailTaper", "tailLength", "fadeOut", "matchColor", "pillPos", "diagonals", "stepSize", "startDistance", "holdToMove", "readyRing", "cheatSheet", "cheatDelay", "reactEmoji", "trail", "trailColor", "trailColor2", "trailStyle", "trailFade", "trailWidth", "sound", "twoFingerSwipes", "swipeDistance"] as const;
 
 function exportAll() {
     const store = settings.store as any;

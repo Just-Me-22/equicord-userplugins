@@ -17,7 +17,7 @@ import { ActiveJoinedThreadsStore, Alerts, ChannelStore, ComponentDispatch, Cons
 
 import { pointer, showCheat } from "./cheat";
 import { openRadial } from "./radial";
-import { settings } from "./settings";
+import { plain, settings } from "./settings";
 import { openStudio } from "./studio";
 import { Context, Hit, Zone } from "./zones";
 
@@ -79,7 +79,7 @@ export function opt<T>(actionId: string, key: string, fallback: T): T {
 export function setOpt(actionId: string, key: string, value: unknown) {
     const all = { ...settings.store.options };
     all[actionId] = { ...all[actionId], [key]: value };
-    settings.store.options = all;
+    settings.store.options = plain(all);
 }
 
 const warn = (text: string) => showToast({ text, variant: "critical" });
@@ -523,6 +523,10 @@ const BUILTIN: Action[] = [
     { id: "nav.back", zone: "anywhere", group: "Getting around", label: "Back", run: () => NavigationRouter.back() },
     { id: "nav.forward", zone: "anywhere", group: "Getting around", label: "Forward", run: () => NavigationRouter.forward() },
     { id: "nav.oldestUnread", zone: "anywhere", group: "Getting around", label: "Jump to oldest unread", run: oldestUnread },
+    { id: "nav.nextUnread", zone: "anywhere", group: "Unreads and mentions", label: "Next unread channel", run: () => pressKeybind("alt+shift+down") },
+    { id: "nav.prevUnread", zone: "anywhere", group: "Unreads and mentions", label: "Previous unread channel", run: () => pressKeybind("alt+shift+up") },
+    { id: "nav.nextMention", zone: "anywhere", group: "Unreads and mentions", label: "Next channel that mentions you", run: () => pressKeybind("mod+shift+alt+down") },
+    { id: "nav.prevMention", zone: "anywhere", group: "Unreads and mentions", label: "Previous channel that mentions you", run: () => pressKeybind("mod+shift+alt+up") },
     { id: "nav.present", zone: "anywhere", group: "Getting around", label: "Jump to newest messages", run: () => ComponentDispatch.dispatch("SCROLLTO_PRESENT") },
     { id: "nav.pageUp", zone: "anywhere", group: "Getting around", label: "Scroll up", options: [PAGES], run: () => scrollPages("nav.pageUp", "SCROLL_PAGE_UP") },
     { id: "nav.pageDown", zone: "anywhere", group: "Getting around", label: "Scroll down", options: [PAGES], run: () => scrollPages("nav.pageDown", "SCROLL_PAGE_DOWN") },
@@ -621,11 +625,14 @@ const BUILTIN: Action[] = [
     { id: "server.muteHour", zone: "servers", label: "Mute for an hour", run: needs("guildId", "a server", muteHour) },
     { id: "server.hideMuted", zone: "servers", label: "Hide or show muted channels", run: needs("guildId", "a server", id => GuildNotifications.updateGuildNotificationSettings(id, { hide_muted_channels: !UserGuildSettingsStore.isGuildCollapsed(id) })) },
     { id: "server.nextUnread", zone: "servers", label: "Next unread channel", run: () => pressKeybind("alt+shift+down") },
+    { id: "server.nextMention", zone: "servers", label: "Next channel that mentions you", run: () => pressKeybind("mod+shift+alt+down") },
 
     { id: "channel.prev", zone: "channels", label: "Previous channel", run: () => pressKeybind("alt+up") },
     { id: "channel.next", zone: "channels", label: "Next channel", run: () => pressKeybind("alt+down") },
     { id: "channel.prevUnread", zone: "channels", label: "Previous unread channel", run: () => pressKeybind("alt+shift+up") },
     { id: "channel.nextUnread", zone: "channels", label: "Next unread channel", run: () => pressKeybind("alt+shift+down") },
+    { id: "channel.nextMention", zone: "channels", label: "Next channel that mentions you", run: () => pressKeybind("mod+shift+alt+down") },
+    { id: "channel.prevMention", zone: "channels", label: "Previous channel that mentions you", run: () => pressKeybind("mod+shift+alt+up") },
     { id: "channel.markRead", zone: "channels", label: "Mark this channel read", run: ctx => ack([thisChannel(ctx)].filter(Boolean)) },
     { id: "channel.mute", zone: "channels", label: "Mute or unmute this channel", run: needs("channelId", "a channel", (id, ctx) => ChannelNotifications.updateChannelOverrideSettings(ctx.guildId ?? null, id, { muted: !UserGuildSettingsStore.isChannelMuted(ctx.guildId ?? null, id) })) },
     { id: "channel.join", zone: "channels", label: "Join this voice channel", run: ctx => joinVoice(ctx.channelId) },
