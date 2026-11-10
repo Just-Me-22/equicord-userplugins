@@ -58,6 +58,7 @@ const settings = definePluginSettings({
 const SLOP = 10;
 const RING_DELAY = 150;
 const TEXT = 'input, textarea, [contenteditable="true"], [role="textbox"]';
+const OWN_CONTROLS = '[class*="vc-mg-"], [class*="vc-mgs-"], input[type="range"], input[type="color"], select';
 const MESSAGE = '[id^="chat-messages-"]';
 
 interface Point { clientX: number; clientY: number; screenX: number; screenY: number; }
@@ -124,7 +125,7 @@ function dropRing() {
 }
 
 function openMenu(target: Element, at: Point) {
-    target.dispatchEvent(new MouseEvent("contextmenu", {
+    const handled = !target.dispatchEvent(new MouseEvent("contextmenu", {
         ...at,
         bubbles: true,
         cancelable: true,
@@ -134,6 +135,7 @@ function openMenu(target: Element, at: Point) {
         buttons: 2
     }));
     if (settings.store.ripple) pulseRing(at);
+    return handled;
 }
 
 function cancelHold() {
@@ -149,16 +151,16 @@ function onPointerDown(e: PointerEvent) {
     swallowClick = false;
     if (!settings.store.hold || e.button !== 0 || !e.isPrimary || !e.isTrusted) return;
     const target = e.target as Element;
-    if (isPluginEnabled("MouseGestures") && target.closest?.('[draggable="true"]')) return;
+    if (target.closest?.(OWN_CONTROLS)) return;
+    if (isPluginEnabled("MouseGestures") && target.closest('[draggable="true"]')) return;
     const at = point(e);
     const { holdTime, ripple } = settings.store;
     hold = {
         at,
         timer: setTimeout(() => {
             hold = null;
-            swallowClick = true;
             lastDown = null;
-            openMenu(target, at);
+            swallowClick = openMenu(target, at);
         }, holdTime),
         ringTimer: ripple ? setTimeout(() => chargeRing(at, holdTime - RING_DELAY), RING_DELAY) : undefined
     };
@@ -178,6 +180,7 @@ function onMouseDown(e: MouseEvent) {
     if (!quick || !settings.store.doubleClick) return;
 
     const target = e.target as Element;
+    if (target.closest(OWN_CONTROLS)) return;
     if (settings.store.skipTextBoxes && target.closest(TEXT)) return;
     if (target.closest(MESSAGE) ? altOnly() && !e.altKey : hasOwnDoubleClick(target)) return;
 
@@ -196,8 +199,10 @@ function onClick(e: MouseEvent) {
     if (!e.isTrusted || e.button !== 0) return;
     if (swallowClick) {
         swallowClick = false;
-        stop(e);
-        return;
+        if (document.querySelector('[role="menu"]')) {
+            stop(e);
+            return;
+        }
     }
 
     const target = e.target as Element;
