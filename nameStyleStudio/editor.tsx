@@ -7,7 +7,7 @@
 import { Logger } from "@utils/Logger";
 import { classes } from "@utils/misc";
 import { findByCodeLazy, findStoreLazy } from "@webpack";
-import { FluxDispatcher, useEffect, useLayoutEffect, useRef, useState, useStateFromStores } from "@webpack/common";
+import { FluxDispatcher, useEffect, useLayoutEffect, useRef, UserStore, useState, useStateFromStores } from "@webpack/common";
 import type { ReactNode } from "react";
 
 import { openBannerGuide } from "./bannerGuide";
@@ -181,13 +181,17 @@ function Moods() {
         const scopes = guildId ? [UserProfileSettingsStore.getPendingChanges(guildId) ?? {}, UserProfileSettingsStore.getPendingChanges() ?? {}] : [UserProfileSettingsStore.getPendingChanges() ?? {}];
         return scopes.flatMap(s => WATCH.map(k => s[k]));
     }, [guildId], sameRefs);
-    const [result, setResult] = useState<{ suggestions: Suggestion[]; basis: string[]; } | null>(null);
+    const saved = useStateFromStores([UserStore], () => {
+        const me = UserStore.getCurrentUser() as any;
+        return [me?.avatar, me?.banner, me?.avatarDecorationData?.asset, me?.collectibles?.nameplate?.asset, JSON.stringify(me?.displayNameStyles ?? null)];
+    }, [], sameRefs);
+    const [result, setResult] = useState<{ suggestions: Suggestion[]; moods: Suggestion[]; basis: string[]; } | null>(null);
 
     useEffect(() => {
         let alive = true;
         suggest(guildId).then(r => { if (alive) setResult(r); }, () => void 0);
         return () => { alive = false; };
-    }, [guildId, ...refs]);
+    }, [guildId, ...refs, ...saved]);
 
     const basis = result?.basis ?? [];
     const list = basis.length > 1 ? `${basis.slice(0, -1).join(", ")} and ${basis[basis.length - 1]}` : basis[0];
@@ -202,9 +206,11 @@ function Moods() {
                     </div>
                 </>
             )}
-            <span className="vc-pe-moods-label">Moods</span>
+            <span className="vc-pe-moods-label">{result?.moods.length ? "Moods in your colours" : "Moods"}</span>
             <div className="vc-pe-mood-row">
-                {Object.entries(MOODS).map(([name, pair], i) => <Chip key={name} pair={pair} label={name} i={i} />)}
+                {result?.moods.length
+                    ? result.moods.map((m, i) => <Chip key={m.label + toHex(m.pair[0]) + toHex(m.pair[1])} pair={m.pair} label={m.label} i={i} />)
+                    : Object.entries(MOODS).map(([name, pair], i) => <Chip key={name} pair={pair} label={name} i={i} />)}
             </div>
         </div>
     );

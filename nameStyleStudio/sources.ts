@@ -51,7 +51,7 @@ export async function loadSources(guildId?: string | null): Promise<Source[]> {
     const avatar = imageOf(pick<any>("pendingAvatar", void 0, guildId, guildAvatar)) ?? IconUtils.getUserAvatarURL(user, false, 256);
 
     const guildBanner = guildProfile?.banner ? `${CDN}/guilds/${guildId}/users/${user.id}/banners/${guildProfile.banner}.png?size=600` : void 0;
-    const savedBannerHash = profile?.banner ?? user.banner;
+    const savedBannerHash = user.banner ?? profile?.banner;
     const savedBanner = savedBannerHash ? IconUtils.getUserBannerURL({ id: user.id, banner: savedBannerHash, canAnimate: false, size: 600 }) : void 0;
     const banner = imageOf(pick<any>("pendingBanner", savedBanner, guildId, guildBanner));
 
