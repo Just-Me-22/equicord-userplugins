@@ -81,20 +81,33 @@ export async function suggest(guildId?: string | null): Promise<{ suggestions: S
     const names = nameStyleColors(guildId);
     if (names) parts.push({ label: "Name style", colors: names });
 
-    const candidates: Suggestion[] = parts.map(p => ({ pair: pickPair(p.colors), label: p.label }));
-    if (parts.length > 1) {
-        candidates.push({ pair: pickPair(parts.flatMap(p => p.colors)), label: "Everything together" });
-        for (const base of parts)
-            for (const pop of parts)
-                if (base !== pop)
-                    candidates.push({ pair: [pickPair(base.colors)[0], pickPair(pop.colors)[1]], label: `${base.label} with ${pop.label.toLowerCase()} accent` });
-    }
-
-    const picked: Suggestion[] = [];
     const all = parts.flatMap(p => p.colors);
     const light = all.length > 0 && all.reduce((sum, c) => sum + intToLab(c)[0], 0) / all.length > 0.62;
-    for (const c of candidates.sort((x, y) => score(y.pair, light) - score(x.pair, light)))
-        if (picked.length < 8 && !picked.some(p => near(p.pair[0], c.pair[0]) && near(p.pair[1], c.pair[1]))) picked.push(c);
+    const build = (mode: "light" | "dark") => {
+        const tag = mode === "light" ? "light" : "dark";
+        const list: Suggestion[] = parts.map(p => ({ pair: pickPair(p.colors, mode), label: `${p.label}, ${tag}` }));
+        if (parts.length > 1) {
+            list.push({ pair: pickPair(all, mode), label: `Everything together, ${tag}` });
+            for (const base of parts)
+                for (const pop of parts)
+                    if (base !== pop)
+                        list.push({ pair: [pickPair(base.colors, mode)[0], pickPair(pop.colors, mode)[1]], label: `${base.label} with ${pop.label.toLowerCase()} accent, ${tag}` });
+        }
+        return list.sort((x, y) => score(y.pair, mode === "light") - score(x.pair, mode === "light"));
+    };
+
+    const picked: Suggestion[] = [];
+    const take = (list: Suggestion[], count: number) => {
+        let added = 0;
+        for (const c of list) {
+            if (added >= count) break;
+            if (picked.some(p => near(p.pair[0], c.pair[0]) && near(p.pair[1], c.pair[1]))) continue;
+            picked.push(c);
+            added++;
+        }
+    };
+    take(build(light ? "light" : "dark"), 5);
+    take(build(light ? "dark" : "light"), 3);
 
     const avatar = sources.find(x => x.id === "avatar")?.image;
     const own = avatar ? await areaPalette(avatar) : [];

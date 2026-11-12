@@ -4,6 +4,7 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
+import { isPluginEnabled, plugins } from "@api/PluginManager";
 import { classes } from "@utils/misc";
 import { findStoreLazy } from "@webpack";
 import { React, ReactDOM, useEffect, useLayoutEffect, useMemo, useRef, useState } from "@webpack/common";
@@ -55,9 +56,15 @@ const SIZES: { id: Size; label: string; cells: number; }[] = [
 ];
 const SORTS: Record<Sort, string> = { default: "Default order", colour: "By colour", match: "Match my theme" };
 const HAVES: Record<Have, string> = { all: "All", owned: "Owned", premium: "Nitro", shop: "Shop" };
+const PAGE = 64;
 const MOVES = new Set(["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "Home", "End"]);
 
 const memory: Record<string, { chip: string; sort: Sort; have: Have; collection: string; }> = {};
+
+function rememberPick(skuId: string) {
+    if (SPECIAL.has(skuId) || !isPluginEnabled("CollectibleShelf")) return;
+    (plugins.CollectibleShelf as { picked?(item: { skuId: string; }): void; } | undefined)?.picked?.({ skuId });
+}
 
 const reduceMotion = () => matchMedia("(prefers-reduced-motion: reduce)").matches;
 
@@ -354,29 +361,43 @@ export function Gallery<T extends Item>({ kind, sections, selectedId, onSelect, 
 
     const activeChip = chips.some(c => c.id === chip) ? chip : "all";
     const activeCollection = collection in collections.options ? collection : "all";
+    const fQuery = React.useDeferredValue(query);
+    const fHave = React.useDeferredValue(have);
+    const fChip = React.useDeferredValue(activeChip);
+    const fCollection = React.useDeferredValue(activeCollection);
     const activeFilters = +(sort !== "default") + +(activeChip !== "all") + +(activeCollection !== "all");
     const sectionOptions = useMemo(() => Object.fromEntries(chips.map(c => [c.id, c.id === "all" ? "All sections" : c.label])) as Record<string, string>, [chips]);
 
     const groups = useMemo(() => {
-        const q = query.trim().toLowerCase();
+        const q = fQuery.trim().toLowerCase();
         const seen = new Set<string>();
-        const filtering = q || activeChip !== "all" || have !== "all" || activeCollection !== "all";
-        const pool = activeChip === "all" ? sections : sections.filter(s => s.section === activeChip);
-        return pool.map(s => ({
+        const specials = new Set<string>();
+        const filtering = q || fChip !== "all" || fHave !== "all" || fCollection !== "all";
+        const pool = fChip === "all" ? sections : sections.filter(s => s.section === fChip);
+        return pool.map(s => {
+            const own = new Set<string>();
+            return {
             id: s.section,
             label: labelOf(s),
             items: s.items.filter(item => {
-                if (SPECIAL.has(item.skuId)) return !filtering;
+                if (SPECIAL.has(item.skuId)) {
+                    if (filtering || specials.has(item.skuId)) return false;
+                    specials.add(item.skuId);
+                    return true;
+                }
+                if (own.has(item.skuId)) return false;
+                own.add(item.skuId);
                 if (q && !(item.label ?? "").toLowerCase().includes(q)) return false;
-                if (have !== "all" && statusOf(item) !== have) return false;
-                if (activeCollection !== "all" && collections.bySku.get(item.skuId) !== activeCollection) return false;
+                if (fHave !== "all" && statusOf(item) !== fHave) return false;
+                if (fCollection !== "all" && collections.bySku.get(item.skuId) !== fCollection) return false;
                 if (!q) return true;
                 if (seen.has(item.skuId)) return false;
                 seen.add(item.skuId);
                 return true;
             })
-        })).filter(g => g.items.length > 0);
-    }, [sections, activeChip, query, have, activeCollection, collections, owned, premium]);
+            };
+        }).filter(g => g.items.length > 0);
+    }, [sections, fChip, fQuery, fHave, fCollection, collections, owned, premium]);
 
     useEffect(() => {
         if (sort === "default") return;
@@ -385,18 +406,49 @@ export function Gallery<T extends Item>({ kind, sections, selectedId, onSelect, 
                 if (!SPECIAL.has(item.skuId)) wantColors(item.skuId, source?.(item));
     }, [sort, groups]);
 
-    const targets = sort === "match" ? [...themeColorsNow(themeTarget.guildId), ...nameStyleColors(themeTarget.guildId) ?? []] : [];
-    const sorted = sort === "default" ? groups : groups.map(g => {
-        const specials = g.items.filter(i => SPECIAL.has(i.skuId));
-        const rest = g.items.filter(i => !SPECIAL.has(i.skuId)).map((item, i) => {
+    const reading = sort !== "default" ? pendingCount() : 0;
+    const ranking = useRef<{ key: string; settled: boolean; missing: number; ranks: Map<string, number>; } | null>(null);
+    const rankKey = `${sort}|${fChip}|${fHave}|${fCollection}|${fQuery}|${sections.length}`;
+    const missing = sort === "default" ? 0 : groups.reduce((n, g) => n + g.items.filter(i => !SPECIAL.has(i.skuId) && !colorsOf(i.skuId)).length, 0);
+    const stale = !!ranking.current && !ranking.current.settled && reading === 0 && ranking.current.missing !== missing;
+    if (sort === "default") ranking.current = null;
+    else if (!ranking.current || ranking.current.key !== rankKey || stale) {
+        const targets = sort === "match" ? [...themeColorsNow(themeTarget.guildId), ...nameStyleColors(themeTarget.guildId) ?? []] : [];
+        const scored = groups.flatMap(g => g.items).filter(i => !SPECIAL.has(i.skuId)).map((item, i) => {
             const colors = colorsOf(item.skuId);
             const key = !colors ? Infinity : sort === "colour" ? hueKey(colors) : targets.length ? matchScore(colors, targets) : 0;
-            return { item, key, i };
+            return { id: item.skuId, key, i };
         });
-        rest.sort((a, b) => a.key - b.key || a.i - b.i);
+        scored.sort((x, y) => x.key - y.key || x.i - y.i);
+        ranking.current = { key: rankKey, settled: !source || missing === 0, missing, ranks: new Map(scored.map((r, i) => [r.id, i])) };
+    }
+    const ranks = ranking.current?.ranks;
+    const sorted = !ranks ? groups : groups.map(g => {
+        const specials = g.items.filter(i => SPECIAL.has(i.skuId));
+        const rest = g.items.filter(i => !SPECIAL.has(i.skuId)).map((item, i) => ({ item, rank: ranks.get(item.skuId) ?? Infinity, i }));
+        rest.sort((x, y) => x.rank - y.rank || x.i - y.i);
         return { ...g, items: [...specials, ...rest.map(r => r.item)] };
     });
-    const reading = sort !== "default" ? pendingCount() : 0;
+
+    const [limit, setLimit] = useState(PAGE);
+    const more = useRef<HTMLDivElement>(null);
+    const total = sorted.reduce((n, g) => n + g.items.length, 0);
+    useEffect(() => setLimit(PAGE), [rankKey, size]);
+    useEffect(() => {
+        if (limit >= total || !more.current || !grid.current) return;
+        const io = new IntersectionObserver(list => {
+            if (list.some(e => e.isIntersecting)) setLimit(n => n + PAGE);
+        }, { root: grid.current, rootMargin: "800px 0px" });
+        io.observe(more.current);
+        return () => io.disconnect();
+    }, [limit, total]);
+    const counts = new Map(sorted.map(g => [g.id, g.items.filter(i => !SPECIAL.has(i.skuId)).length]));
+    let left = limit;
+    const shown = sorted.map(g => {
+        const items = g.items.slice(0, Math.max(0, left));
+        left -= items.length;
+        return { ...g, items };
+    }).filter(g => g.items.length > 0);
 
     const chosen = useRef(selectedId);
     if (!previewing.current) chosen.current = selectedId;
@@ -436,6 +488,7 @@ export function Gallery<T extends Item>({ kind, sections, selectedId, onSelect, 
                 if (tile) flyTo(tile, stage);
             }
             chosen.current = item.skuId === "None" ? null : item.skuId;
+            rememberPick(item.skuId);
             onSelect(item.skuId === "None" ? null : item);
         }
     };
@@ -448,6 +501,7 @@ export function Gallery<T extends Item>({ kind, sections, selectedId, onSelect, 
         const item = pool[Math.floor(Math.random() * pool.length)];
         clearTimeout(dwell.current);
         preview(item);
+        rememberPick(item.skuId);
         const tile = grid.current?.querySelector<HTMLElement>(`[data-sku="${item.skuId}"]`);
         tile?.scrollIntoView({ block: "nearest" });
     }
@@ -573,7 +627,7 @@ export function Gallery<T extends Item>({ kind, sections, selectedId, onSelect, 
                     {chips.length > 2 && <Select value={activeChip} options={sectionOptions} label="Section" onChange={v => setChip(mem.chip = v)} />}
                     {collections.many && <Select value={activeCollection} options={collections.options} label="Collection" onChange={v => setCollection(mem.collection = v)} />}
                     {reading > 0 && <span className="vc-cg-reading">Reading colours, {reading} left</span>}
-                    {sort !== "default" && !source && <span className="vc-cg-reading">Frames get their colours as you scroll past them</span>}
+                    {sort !== "default" && !source && <span className="vc-cg-reading">Frames get their colours as you scroll; choose the sort again to re-sort</span>}
                 </div>
             )}
             <div ref={grid} className="vc-cg-grid" role="listbox" aria-label="Items" onKeyDown={move}>
@@ -583,12 +637,12 @@ export function Gallery<T extends Item>({ kind, sections, selectedId, onSelect, 
                         <button className="vc-cg-clear" onClick={clearFilters}>Clear filters</button>
                     </div>
                 )}
-                {sorted.map((g, gi) => (
+                {shown.map((g, gi) => (
                     <React.Fragment key={g.id}>
                         {headed && (
                             <div className={classes("vc-cg-head", gi === 0 && "vc-cg-head-first")} role="presentation">
                                 <span>{g.label}</span>
-                                <span className="vc-cg-count">{g.items.filter(i => !SPECIAL.has(i.skuId)).length}</span>
+                                <span className="vc-cg-count">{counts.get(g.id)}</span>
                             </div>
                         )}
                         {g.items.map((item, i) => (
@@ -603,6 +657,7 @@ export function Gallery<T extends Item>({ kind, sections, selectedId, onSelect, 
                         ))}
                     </React.Fragment>
                 ))}
+                {limit < total && <div ref={more} className="vc-cg-more" aria-hidden="true" />}
             </div>
             {stage ? ReactDOM.createPortal(
                 <>

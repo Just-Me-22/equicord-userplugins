@@ -120,7 +120,7 @@ export function frameGallery({ props, sections, Frame }: FrameArgs, fallback: Re
                 onSelect={item => props.onSelect(item ? { skuId: item.skuId, type: PROFILE_FRAME } : null)}
                 onOpenShop={props.onOpenShop}
                 replay
-                thumb={item => <span className="vc-cg-frame"><Frame frame={item} transparentBackground /></span>}
+                thumb={item => <span className="vc-cg-frame"><Frame frame={item} /></span>}
             />
         </ErrorBoundary>
     );
@@ -141,7 +141,8 @@ export function nameplateGallery({ props, sections, Plate }: NameplateArgs, fall
     plateRef.current = Plate as typeof plateRef.current;
     const owned = sections.findIndex(s => s.section === "purchase");
     const at = owned >= 0 ? owned : 0;
-    const withSpecials = sections.map((s, i) => i === at ? { ...s, items: [NONE, SHOP, ...s.items] } : s);
+    const hasSpecials = sections.some(s => s.items.some(i => i.skuId === NONE.skuId || i.skuId === SHOP.skuId));
+    const withSpecials = hasSpecials ? sections : sections.map((s, i) => i === at ? { ...s, items: [NONE, SHOP, ...s.items] } : s);
     return (
         <ErrorBoundary fallback={() => fallback as any}>
             <Gallery<Nameplate>

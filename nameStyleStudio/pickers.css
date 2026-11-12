@@ -1331,18 +1331,18 @@
 }
 
 .vc-cg-card.vc-cg-kind-frame {
-    --vc-cg-col: 104px;
-    --vc-cg-h: 140px;
+    --vc-cg-col: 120px;
+    --vc-cg-h: 200px;
 }
 
 .vc-cg-card.vc-cg-kind-frame.vc-cg-size-s {
-    --vc-cg-col: 80px;
-    --vc-cg-h: 106px;
+    --vc-cg-col: 90px;
+    --vc-cg-h: 150px;
 }
 
 .vc-cg-card.vc-cg-kind-frame.vc-cg-size-l {
-    --vc-cg-col: 150px;
-    --vc-cg-h: 200px;
+    --vc-cg-col: 170px;
+    --vc-cg-h: 283px;
 }
 
 .vc-cg-card.vc-cg-kind-effect .vc-cg-tile,
@@ -1354,21 +1354,21 @@
 
 .vc-cg-kind-frame .vc-cg-frame {
     position: absolute;
-    inset: 0;
+    inset: 6px;
     display: block;
     padding: 0;
     overflow: hidden;
 }
 
 .vc-cg-kind-frame .vc-cg-frame > * {
-    position: absolute !important;
-    top: var(--vc-cg-ft, 14%);
-    left: 50%;
-    width: var(--vc-cg-fw, 80%) !important;
-    height: auto !important;
+    position: relative !important;
+    width: 100% !important;
+    height: 100% !important;
     max-height: none !important;
-    aspect-ratio: 1 / 2.3;
-    translate: -50% 0;
+}
+
+.vc-cg-kind-frame .vc-cg-frame img[class*="sampleProfile_"] {
+    visibility: hidden;
 }
 
 @media (max-width: 900px) {
@@ -1594,4 +1594,9 @@
 
 .vc-cg-host.vc-cp-decoration .vc-cg-stage > :nth-child(n + 3):not(.vc-cg-tag, .vc-cg-replay) {
     display: none !important;
+}
+
+.vc-cg-more {
+    grid-column: 1 / -1;
+    height: 1px;
 }

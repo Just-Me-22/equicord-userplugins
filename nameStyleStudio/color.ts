@@ -264,9 +264,9 @@ export function makeReadable(primary: number, accent: number, target = 4.5): [nu
     return [shift(primary), shift(accent)];
 }
 
-export function pickPair(colors: number[]): [number, number] {
+export function pickPair(colors: number[], mode?: "light" | "dark"): [number, number] {
     const lch = colors.map(c => labToLch(intToLab(c)));
-    const light = lch.reduce((sum, v) => sum + v[0], 0) / lch.length > 0.62;
+    const light = mode ? mode === "light" : lch.reduce((sum, v) => sum + v[0], 0) / lch.length > 0.62;
     let base = 0;
     lch.forEach((v, i) => { if (light ? v[0] > lch[base][0] : v[0] < lch[base][0]) base = i; });
     let pop = -1;
@@ -274,7 +274,10 @@ export function pickPair(colors: number[]): [number, number] {
     if (pop < 0) pop = base;
     const [L, C, h] = lch[base];
     const primary = lchToInt([light ? Math.max(L, 0.8) : Math.min(L, 0.42), C, h]);
-    const accent = pop === base ? lchToInt([light ? Math.max(0.5, L - 0.3) : Math.min(0.85, L + 0.3), C, h]) : colors[pop];
+    const [pl] = labToLch(intToLab(primary));
+    const [aL, aC, aH] = pop === base ? [L, C, h] : lch[pop];
+    const gap = Math.abs(aL - pl);
+    const accent = pop !== base && gap >= 0.25 ? colors[pop] : lchToInt([light ? Math.min(aL, pl - 0.3) : Math.max(aL, pl + 0.3), Math.max(aC, 0.08), aH]);
     return [primary, accent];
 }
 
