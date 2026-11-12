@@ -142,7 +142,7 @@ function sortColors(clusters: Cluster[], order: Order): Cluster[] {
 
 const dist = (a: Lab, b: Lab) => Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]);
 
-export function extractPalette(pixels: Lab[], count: number, order: Order): number[] {
+export function extractPalette(pixels: Lab[], count: number, order: Order, boost = 5): number[] {
     if (!pixels.length) return [];
     const k = Math.min(10, Math.max(count + 3, 6));
 
@@ -180,7 +180,7 @@ export function extractPalette(pixels: Lab[], count: number, order: Order): numb
     const sizes = centers.map(() => 0);
     assign.forEach(a => sizes[a]++);
     const clusters = centers
-        .map((lab, i) => ({ lab, weight: sizes[i] / pixels.length, score: sizes[i] * (0.4 + Math.hypot(lab[1], lab[2]) * 5) }))
+        .map((lab, i) => ({ lab, weight: sizes[i] / pixels.length, score: sizes[i] * (0.4 + Math.hypot(lab[1], lab[2]) * boost) }))
         .filter(c => c.weight > 0)
         .sort((a, b) => b.score - a.score);
 
@@ -266,14 +266,15 @@ export function makeReadable(primary: number, accent: number, target = 4.5): [nu
 
 export function pickPair(colors: number[]): [number, number] {
     const lch = colors.map(c => labToLch(intToLab(c)));
+    const light = lch.reduce((sum, v) => sum + v[0], 0) / lch.length > 0.62;
     let base = 0;
-    lch.forEach((v, i) => { if (v[0] < lch[base][0]) base = i; });
+    lch.forEach((v, i) => { if (light ? v[0] > lch[base][0] : v[0] < lch[base][0]) base = i; });
     let pop = -1;
     lch.forEach((v, i) => { if (i !== base && (pop < 0 || v[1] > lch[pop][1])) pop = i; });
     if (pop < 0) pop = base;
     const [L, C, h] = lch[base];
-    const primary = lchToInt([Math.min(L, 0.42), C, h]);
-    const accent = pop === base ? lchToInt([Math.min(0.85, L + 0.3), C, h]) : colors[pop];
+    const primary = lchToInt([light ? Math.max(L, 0.8) : Math.min(L, 0.42), C, h]);
+    const accent = pop === base ? lchToInt([light ? Math.max(0.5, L - 0.3) : Math.min(0.85, L + 0.3), C, h]) : colors[pop];
     return [primary, accent];
 }
 

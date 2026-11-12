@@ -91,7 +91,7 @@ export function effectGallery({ props, sections }: EffectArgs, fallback: ReactNo
                 thumb={item => {
                     const src = effectConfig(item)?.thumbnailPreviewSrc;
                     return src
-                        ? <img className="vc-cg-img vc-cg-cover" src={`${src}?width=100&height=195`} alt="" loading="lazy" draggable={false} />
+                        ? <img className="vc-cg-img vc-cg-cover" src={`${src}?width=200&height=390`} alt="" loading="lazy" draggable={false} />
                         : <span className="vc-cg-label">{item.label}</span>;
                 }}
             />
@@ -104,7 +104,7 @@ interface Frame { skuId: string; label?: string; }
 interface FrameArgs {
     props: { pendingProfileFrame?: Frame | null; onSelect(item: { skuId: string; type: number; } | null): void; onOpenShop(): void; };
     sections: GallerySection<Frame>[];
-    Frame: ComponentType<{ frame: Frame; }>;
+    Frame: ComponentType<{ frame: Frame; transparentBackground?: boolean; }>;
 }
 
 const PROFILE_FRAME = 3;
@@ -120,7 +120,7 @@ export function frameGallery({ props, sections, Frame }: FrameArgs, fallback: Re
                 onSelect={item => props.onSelect(item ? { skuId: item.skuId, type: PROFILE_FRAME } : null)}
                 onOpenShop={props.onOpenShop}
                 replay
-                thumb={item => <span className="vc-cg-frame"><Frame frame={item} /></span>}
+                thumb={item => <span className="vc-cg-frame"><Frame frame={item} transparentBackground /></span>}
             />
         </ErrorBoundary>
     );

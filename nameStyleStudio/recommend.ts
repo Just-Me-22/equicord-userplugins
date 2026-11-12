@@ -9,26 +9,42 @@ import { loadSources, nameStyleColors, readPixels } from "./sources";
 
 export interface Suggestion { pair: [number, number]; label: string; }
 
-const MOOD_SHAPES: { label: string; base: [number, number]; pop: [number, number]; shift: number; second?: boolean; }[] = [
-    { label: "Midnight", base: [0.2, 0.05], pop: [0.66, 0.12], shift: 0 },
-    { label: "Vivid", base: [0.4, 0.18], pop: [0.78, 0.17], shift: 0, second: true },
-    { label: "Pastel", base: [0.8, 0.06], pop: [0.92, 0.07], shift: 25 },
-    { label: "Glow", base: [0.24, 0.09], pop: [0.82, 0.16], shift: 0, second: true },
-    { label: "Warm shift", base: [0.32, 0.12], pop: [0.8, 0.14], shift: 40 },
-    { label: "Cool shift", base: [0.3, 0.1], pop: [0.74, 0.13], shift: -40 },
-    { label: "Opposite", base: [0.3, 0.12], pop: [0.8, 0.14], shift: 180 },
-    { label: "Mono", base: [0.22, 0.02], pop: [0.82, 0.05], shift: 0 }
+const MOOD_SHAPES: { label: string; base: [number, number]; pop: [number, number]; baseHue: 1 | 2; popHue: 1 | 2; shift?: number; }[] = [
+    { label: "Pastel", base: [0.84, 0.07], pop: [0.94, 0.06], baseHue: 1, popHue: 2 },
+    { label: "Soft", base: [0.7, 0.09], pop: [0.9, 0.08], baseHue: 2, popHue: 1 },
+    { label: "Sunlit", base: [0.88, 0.05], pop: [0.72, 0.13], baseHue: 2, popHue: 1 },
+    { label: "Vivid", base: [0.5, 0.16], pop: [0.82, 0.15], baseHue: 1, popHue: 2 },
+    { label: "Midnight", base: [0.2, 0.05], pop: [0.8, 0.12], baseHue: 1, popHue: 2 },
+    { label: "Glow", base: [0.26, 0.08], pop: [0.86, 0.14], baseHue: 2, popHue: 1 },
+    { label: "Opposite", base: [0.78, 0.08], pop: [0.6, 0.13], baseHue: 1, popHue: 1, shift: 180 },
+    { label: "Mono", base: [0.86, 0.03], pop: [0.4, 0.06], baseHue: 1, popHue: 1 }
 ];
 
+const hueGap = (a: number, b: number) => Math.abs(((a - b + 540) % 360) - 180);
+
 function moodsFrom(colors: number[]): Suggestion[] {
-    const hues = colors.map(c => labToLch(intToLab(c))).filter(([, C]) => C > 0.04).map(([, , h]) => h);
-    if (!hues.length) return [];
-    const [h1] = hues;
-    const h2 = hues.find(h => Math.abs(((h - h1 + 540) % 360) - 180) > 30) ?? h1;
-    return MOOD_SHAPES.map(m => ({
+    const lch = colors.map(c => labToLch(intToLab(c))).filter(([, C]) => C > 0.025);
+    if (!lch.length) return [];
+    const h1 = lch[0][2];
+    const h2 = lch.find(([, , h]) => hueGap(h, h1) > 25)?.[2] ?? h1 + 40;
+    const own: Suggestion = { label: "Straight from you", pair: [colors[0], colors.find(c => hueGap(labToLch(intToLab(c))[2], h1) > 25) ?? colors[1] ?? colors[0]] };
+    const hueOf = (n: 1 | 2) => n === 1 ? h1 : h2;
+    return [own, ...MOOD_SHAPES.map(m => ({
         label: m.label,
-        pair: [lchToInt([m.base[0], m.base[1], h1 + m.shift]), lchToInt([m.pop[0], m.pop[1], (m.second ? h2 : h1) + m.shift])]
-    }));
+        pair: [lchToInt([m.base[0], m.base[1], hueOf(m.baseHue) + (m.shift ?? 0)]), lchToInt([m.pop[0], m.pop[1], hueOf(m.popHue) + (m.shift ?? 0)])] as [number, number]
+    }))];
+}
+
+const areas = new Map<string, Promise<number[]>>();
+
+function areaPalette(src: string) {
+    let p = areas.get(src);
+    if (!p) {
+        p = readPixels(src).then(px => extractPalette(px.filter(([L]) => L > 0.16 && L < 0.97), 6, "weight", 0.6), () => []);
+        areas.set(src, p);
+        if (areas.size > 20) areas.delete(areas.keys().next().value!);
+    }
+    return p;
 }
 
 const palettes = new Map<string, Promise<number[]>>();
@@ -36,7 +52,7 @@ const palettes = new Map<string, Promise<number[]>>();
 function paletteOf(src: string) {
     let p = palettes.get(src);
     if (!p) {
-        p = readPixels(src).then(px => extractPalette(px, 5, "weight"), () => []);
+        p = readPixels(src).then(px => extractPalette(px.filter(([L]) => L > 0.1 && L < 0.98), 5, "weight", 2), () => []);
         palettes.set(src, p);
         if (palettes.size > 40) palettes.delete(palettes.keys().next().value!);
     }
@@ -48,9 +64,10 @@ const near = (a: number, b: number) => {
     return Math.hypot(x[0] - y[0], x[1] - y[1], x[2] - y[2]) < 0.06;
 };
 
-function score([p, a]: [number, number]) {
+function score([p, a]: [number, number], light: boolean) {
     const ratio = Math.min(readability(p, a).ratio, 7);
-    return ratio + labToLch(intToLab(a))[1] * 8;
+    const lightness = intToLab(p)[0];
+    return ratio + labToLch(intToLab(a))[1] * 8 + (light ? lightness * 10 : (1 - lightness) * 2);
 }
 
 export async function suggest(guildId?: string | null): Promise<{ suggestions: Suggestion[]; moods: Suggestion[]; basis: string[]; }> {
@@ -74,10 +91,14 @@ export async function suggest(guildId?: string | null): Promise<{ suggestions: S
     }
 
     const picked: Suggestion[] = [];
-    for (const c of candidates.sort((x, y) => score(y.pair) - score(x.pair)))
+    const all = parts.flatMap(p => p.colors);
+    const light = all.length > 0 && all.reduce((sum, c) => sum + intToLab(c)[0], 0) / all.length > 0.62;
+    for (const c of candidates.sort((x, y) => score(y.pair, light) - score(x.pair, light)))
         if (picked.length < 8 && !picked.some(p => near(p.pair[0], c.pair[0]) && near(p.pair[1], c.pair[1]))) picked.push(c);
 
-    return { suggestions: picked, moods: moodsFrom(parts.flatMap(p => p.colors)), basis: parts.map(p => p.label) };
+    const avatar = sources.find(x => x.id === "avatar")?.image;
+    const own = avatar ? await areaPalette(avatar) : [];
+    return { suggestions: picked, moods: moodsFrom(own.length ? own : parts.flatMap(p => p.colors)), basis: parts.map(p => p.label) };
 }
 
 export interface NameSuggestion { colors: number[]; label: string; }

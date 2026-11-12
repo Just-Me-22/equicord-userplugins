@@ -54,7 +54,7 @@ const SIZES: { id: Size; label: string; cells: number; }[] = [
     { id: "l", label: "Large tiles", cells: 1 }
 ];
 const SORTS: Record<Sort, string> = { default: "Default order", colour: "By colour", match: "Match my theme" };
-const HAVES: Record<Have, string> = { all: "Everything", owned: "Owned", premium: "Nitro", shop: "Shop" };
+const HAVES: Record<Have, string> = { all: "All", owned: "Owned", premium: "Nitro", shop: "Shop" };
 const MOVES = new Set(["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "Home", "End"]);
 
 const memory: Record<string, { chip: string; sort: Sort; have: Have; collection: string; }> = {};
@@ -206,13 +206,60 @@ let MemoTile: typeof TileImpl | null = null;
 const tileType = () => MemoTile ??= React.memo(TileImpl) as typeof TileImpl;
 
 function Select<K extends string>({ value, options, onChange, label }: { value: K; options: Record<K, string>; onChange(v: K): void; label: string; }) {
+    const [open, setOpen] = useState(false);
+    const box = useRef<HTMLDivElement>(null);
+    const keys = Object.keys(options) as K[];
+
+    useEffect(() => {
+        if (!open) return;
+        const away = (e: MouseEvent) => {
+            if (!box.current?.contains(e.target as Node)) setOpen(false);
+        };
+        document.addEventListener("mousedown", away, true);
+        const on = box.current?.querySelector<HTMLElement>('[aria-selected="true"]');
+        on?.focus({ preventScroll: true });
+        on?.scrollIntoView({ block: "nearest" });
+        return () => document.removeEventListener("mousedown", away, true);
+    }, [open]);
+
+    const choose = (k: K) => {
+        setOpen(false);
+        if (k !== value) onChange(k);
+    };
+
+    const onKey = (e: KeyboardEvent<HTMLDivElement>) => {
+        if (!open) return;
+        if (e.key === "Escape") {
+            e.preventDefault();
+            e.stopPropagation();
+            setOpen(false);
+            box.current?.querySelector<HTMLElement>(".vc-cg-select-button")?.focus();
+            return;
+        }
+        if (e.key !== "ArrowDown" && e.key !== "ArrowUp") return;
+        e.preventDefault();
+        const items = [...box.current!.querySelectorAll<HTMLElement>(".vc-cg-select-item")];
+        const at = items.indexOf(document.activeElement as HTMLElement);
+        items[(at + (e.key === "ArrowDown" ? 1 : -1) + items.length) % items.length]?.focus();
+    };
+
     return (
-        <label className="vc-cg-select" title={label}>
-            <select value={value} aria-label={label} onChange={e => onChange(e.currentTarget.value as K)}>
-                {(Object.keys(options) as K[]).map(k => <option key={k} value={k}>{options[k]}</option>)}
-            </select>
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M7 10l5 5 5-5z" /></svg>
-        </label>
+        <div ref={box} className={classes("vc-cg-select", open && "vc-cg-select-open")} onKeyDown={onKey}>
+            <button type="button" className="vc-cg-select-button" aria-haspopup="listbox" aria-expanded={open} aria-label={`${label}: ${options[value]}`} title={label} onClick={() => setOpen(o => !o)}>
+                <span>{options[value]}</span>
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6" /></svg>
+            </button>
+            {open && (
+                <div className="vc-cg-select-panel" role="listbox" aria-label={label}>
+                    {keys.map(k => (
+                        <button key={k} type="button" role="option" aria-selected={k === value} className="vc-cg-select-item" onClick={() => choose(k)}>
+                            <span>{options[k]}</span>
+                            {k === value && <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5" /></svg>}
+                        </button>
+                    ))}
+                </div>
+            )}
+        </div>
     );
 }
 
@@ -223,6 +270,7 @@ export function Gallery<T extends Item>({ kind, sections, selectedId, onSelect, 
     const [sort, setSort] = useState<Sort>(mem.sort);
     const [have, setHave] = useState<Have>(mem.have);
     const [collection, setCollection] = useState(mem.collection);
+    const [filters, setFilters] = useState(mem.sort !== "default" || mem.chip !== "all" || mem.collection !== "all");
     const [size, setSize] = useState<Size>(() => settings.store.gallerySize?.[kind] ?? "m");
     const [peek, setPeek] = useState<T | null>(null);
     const [stage, setStage] = useState<HTMLElement | null>(null);
@@ -256,6 +304,27 @@ export function Gallery<T extends Item>({ kind, sections, selectedId, onSelect, 
 
     useEffect(() => () => clearTimeout(dwell.current), []);
 
+    useEffect(() => {
+        if (!stage) return;
+        const fit = () => {
+            const card = [...stage.children].find(c => !c.matches(".vc-cg-tag, .vc-cg-replay")) as HTMLElement | undefined;
+            if (!card?.offsetWidth) return;
+            const cs = getComputedStyle(stage);
+            const w = stage.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
+            const h = stage.clientHeight - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom);
+            if (w <= 0 || h <= 0) return;
+            stage.style.setProperty("--vc-cg-fit", Math.min(1, w / card.offsetWidth, h / card.offsetHeight).toFixed(3));
+        };
+        const ro = new ResizeObserver(fit);
+        ro.observe(stage);
+        for (const c of stage.children) ro.observe(c);
+        fit();
+        return () => {
+            ro.disconnect();
+            stage.style.removeProperty("--vc-cg-fit");
+        };
+    }, [stage]);
+
     const owned = useMemo(() => new Set(sections.filter(s => s.section === "purchase").flatMap(s => s.items.map(i => i.skuId))), [sections]);
     const premium = useMemo(() => new Set(sections.filter(s => s.section === "premium_purchase").flatMap(s => s.items.map(i => i.skuId))), [sections]);
     const statusOf = (item: T): Status | null => SPECIAL.has(item.skuId) ? null : owned.has(item.skuId) ? "owned" : premium.has(item.skuId) ? "premium" : "shop";
@@ -285,6 +354,8 @@ export function Gallery<T extends Item>({ kind, sections, selectedId, onSelect, 
 
     const activeChip = chips.some(c => c.id === chip) ? chip : "all";
     const activeCollection = collection in collections.options ? collection : "all";
+    const activeFilters = +(sort !== "default") + +(activeChip !== "all") + +(activeCollection !== "all");
+    const sectionOptions = useMemo(() => Object.fromEntries(chips.map(c => [c.id, c.id === "all" ? "All sections" : c.label])) as Record<string, string>, [chips]);
 
     const groups = useMemo(() => {
         const q = query.trim().toLowerCase();
@@ -419,6 +490,26 @@ export function Gallery<T extends Item>({ kind, sections, selectedId, onSelect, 
             ? { mode: "pick", title: "Selected", name: nameOf(current) }
             : { mode: "none", title: "Nothing selected", name: "" };
 
+    const clearFilters = () => {
+        setQuery("");
+        setHave(mem.have = "all");
+        setChip(mem.chip = "all");
+        setCollection(mem.collection = "all");
+        setSort(mem.sort = "default");
+    };
+
+    const foot = (
+        <div className={classes("vc-cg-tag", `vc-cg-tag-${tag.mode}`, !stage && "vc-cg-tag-inline")} onMouseEnter={() => api.current.hover(null)}>
+            <span key={tag.mode + tag.name} className="vc-cg-tag-in" aria-live="polite">
+                <span className="vc-cg-tag-title"><span className="vc-cg-tag-dot" aria-hidden="true" />{tag.title}</span>
+                {tag.name && <span className="vc-cg-tag-name">{tag.name}</span>}
+            </span>
+            {current && (
+                <button className="vc-cg-now-remove" style={peek ? { visibility: "hidden" } : undefined} onClick={() => api.current.choose({ skuId: "None" } as T, false)}>Remove</button>
+            )}
+        </div>
+    );
+
     return (
         <div
             ref={root}
@@ -453,6 +544,11 @@ export function Gallery<T extends Item>({ kind, sections, selectedId, onSelect, 
                     />
                     {query && <button aria-label="Clear search" onClick={() => setQuery("")}>×</button>}
                 </div>
+                <button className="vc-cg-filter" aria-expanded={filters} onClick={() => setFilters(v => !v)}>
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true"><path d="M4 7h16M7 12h10M10 17h4" /></svg>
+                    Filters
+                    {activeFilters > 0 && <span className="vc-cg-badge">{activeFilters}</span>}
+                </button>
                 <button className="vc-cg-shuffle" title="Shuffle: preview something random (Space)" aria-label="Shuffle" onClick={shuffle}>
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M16 3h5v5M4 20 21 3M21 16v5h-5M15 15l6 6M4 4l5 5" /></svg>
                 </button>
@@ -464,32 +560,29 @@ export function Gallery<T extends Item>({ kind, sections, selectedId, onSelect, 
                     ))}
                 </div>
             </div>
-            {current && (
-                <div className="vc-cg-now">
-                    <span className="vc-cg-now-thumb">{thumb(current, false)}</span>
-                    <span className="vc-cg-now-text">
-                        <span className="vc-cg-now-kicker">Selected</span>
-                        <span className="vc-cg-now-name">{nameOf(current)}</span>
-                    </span>
-                    <button className="vc-cg-now-remove" onClick={() => api.current.choose({ skuId: "None" } as T, false)}>Remove</button>
-                </div>
-            )}
-            <div className="vc-cg-chips" role="radiogroup" aria-label="Filter">
-                {chips.map(c => (
-                    <button key={c.id} role="radio" aria-checked={c.id === activeChip} className={classes("vc-cg-chip", c.id === activeChip && "vc-cg-chip-on")} onClick={() => setChip(mem.chip = c.id)}>
-                        {c.label}
+            <div className="vc-cg-chips" role="radiogroup" aria-label="Show">
+                {(Object.keys(HAVES) as Have[]).map(k => (
+                    <button key={k} role="radio" aria-checked={have === k} className={classes("vc-cg-chip", have === k && "vc-cg-chip-on")} onClick={() => setHave(mem.have = k)}>
+                        {HAVES[k]}
                     </button>
                 ))}
             </div>
-            <div className="vc-cg-tools">
-                <Select value={sort} options={SORTS} label="Sort" onChange={v => setSort(mem.sort = v)} />
-                <Select value={have} options={HAVES} label="Show" onChange={v => setHave(mem.have = v)} />
-                {collections.many && <Select value={activeCollection} options={collections.options} label="Collection" onChange={v => setCollection(mem.collection = v)} />}
-                {reading > 0 && <span className="vc-cg-reading">Reading colours, {reading} left</span>}
-                {sort !== "default" && !source && <span className="vc-cg-reading">Frames get their colours as you scroll past them</span>}
-            </div>
+            {filters && (
+                <div className="vc-cg-tools">
+                    <Select value={sort} options={SORTS} label="Sort" onChange={v => setSort(mem.sort = v)} />
+                    {chips.length > 2 && <Select value={activeChip} options={sectionOptions} label="Section" onChange={v => setChip(mem.chip = v)} />}
+                    {collections.many && <Select value={activeCollection} options={collections.options} label="Collection" onChange={v => setCollection(mem.collection = v)} />}
+                    {reading > 0 && <span className="vc-cg-reading">Reading colours, {reading} left</span>}
+                    {sort !== "default" && !source && <span className="vc-cg-reading">Frames get their colours as you scroll past them</span>}
+                </div>
+            )}
             <div ref={grid} className="vc-cg-grid" role="listbox" aria-label="Items" onKeyDown={move}>
-                {sorted.length === 0 && <div className="vc-cg-empty">Nothing matches that.</div>}
+                {sorted.length === 0 && (
+                    <div className="vc-cg-empty">
+                        Nothing matches.
+                        <button className="vc-cg-clear" onClick={clearFilters}>Clear filters</button>
+                    </div>
+                )}
                 {sorted.map((g, gi) => (
                     <React.Fragment key={g.id}>
                         {headed && (
@@ -504,22 +597,16 @@ export function Gallery<T extends Item>({ kind, sections, selectedId, onSelect, 
                                 item={item}
                                 selected={isSelected(item)}
                                 status={statusOf(item)}
-                                delay={i < ANIMATED ? Math.min(i, 8) * 30 : null}
+                                delay={i < ANIMATED ? Math.min(i, 8) * 20 : null}
                                 api={api}
                             />
                         ))}
                     </React.Fragment>
                 ))}
             </div>
-            {stage && ReactDOM.createPortal(
+            {stage ? ReactDOM.createPortal(
                 <>
-                    <div className={classes("vc-cg-tag", `vc-cg-tag-${tag.mode}`)} aria-live="polite">
-                        <span key={tag.mode + tag.name} className="vc-cg-tag-in">
-                            <span className="vc-cg-tag-dot" aria-hidden="true" />
-                            <span className="vc-cg-tag-title">{tag.title}</span>
-                            {tag.name && <span className="vc-cg-tag-name">{tag.name}</span>}
-                        </span>
-                    </div>
+                    {foot}
                     {replay && (peek ?? current) && (
                         <button className="vc-cg-replay" title="Replay the animation" aria-label="Replay the animation" onClick={replayStage}>
                             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7M3 4v5h5" /></svg>
@@ -527,7 +614,7 @@ export function Gallery<T extends Item>({ kind, sections, selectedId, onSelect, 
                     )}
                 </>,
                 stage
-            )}
+            ) : foot}
         </div>
     );
 }
