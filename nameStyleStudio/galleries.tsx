@@ -6,6 +6,7 @@
 
 import ErrorBoundary from "@components/ErrorBoundary";
 import { findStoreLazy } from "@webpack";
+import { useLayoutEffect, useRef } from "@webpack/common";
 import type { ComponentType, ReactNode } from "react";
 
 import { Gallery, GallerySection } from "./Gallery";
@@ -109,6 +110,22 @@ interface FrameArgs {
 
 const PROFILE_FRAME = 3;
 
+function FrameThumb({ frame, Frame }: { frame: Frame; Frame: FrameArgs["Frame"]; }) {
+    const box = useRef<HTMLDivElement>(null);
+    useLayoutEffect(() => {
+        const root = box.current?.firstElementChild as HTMLElement | null;
+        if (!root) return;
+        root.style.setProperty("height", "100%", "important");
+        for (const inner of root.querySelectorAll<HTMLElement>(':scope > [class*="profileContainer_"]'))
+            inner.style.setProperty("height", "100%", "important");
+    });
+    return (
+        <div ref={box} className="vc-cg-frame-host">
+            <Frame frame={frame} />
+        </div>
+    );
+}
+
 export function frameGallery({ props, sections, Frame }: FrameArgs, fallback: ReactNode) {
     return (
         <ErrorBoundary fallback={() => fallback as any}>
@@ -120,7 +137,7 @@ export function frameGallery({ props, sections, Frame }: FrameArgs, fallback: Re
                 onSelect={item => props.onSelect(item ? { skuId: item.skuId, type: PROFILE_FRAME } : null)}
                 onOpenShop={props.onOpenShop}
                 replay
-                thumb={item => <span className="vc-cg-frame"><Frame frame={item} /></span>}
+                thumb={item => <span className="vc-cg-frame"><FrameThumb frame={item} Frame={Frame} /></span>}
             />
         </ErrorBoundary>
     );
