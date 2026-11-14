@@ -848,6 +848,11 @@
     width: min(1000px, 94vw) !important;
 }
 
+div.vc-cg-host.vc-cg-host {
+    background: var(--modal-background) !important;
+    backdrop-filter: none !important;
+}
+
 .vc-cg-row {
     align-items: stretch !important;
     gap: 24px;
@@ -1151,6 +1156,10 @@
     padding: 4px 8px 16px 4px;
 }
 
+.vc-cg-kind-frame .vc-cg-grid {
+    gap: 16px 14px;
+}
+
 .vc-cg-head {
     top: -4px;
     margin: 16px -8px 0 -4px;
@@ -1368,9 +1377,7 @@
     max-height: none !important;
 }
 
-.vc-cg-kind-frame .vc-cg-frame [class*="profileContainer_"],
-.vc-cg-kind-frame .vc-cg-frame [class*="profileContainer_"] > div,
-.vc-cg-kind-frame .vc-cg-frame [class*="profileFrameContainer_"] {
+.vc-cg-kind-frame .vc-cg-frame.vc-cg-frame :is([class*="profileContainer_"], [class*="profileContainer_"] > div, [class*="profileFrameContainer_"])[class] {
     overflow: visible !important;
 }
 
