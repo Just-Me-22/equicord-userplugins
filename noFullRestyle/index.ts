@@ -8,7 +8,7 @@ import definePlugin, { StartAt } from "@utils/types";
 
 const HOVER = "vc-region-hover";
 const RING = "vc-region-ring";
-const BASE = '[class*="baseLayer_"] > div[class*="base__"]';
+const BASE = ':is([class*="baseLayer_"] > div[class*="base_"], [class*="baseLayer_"] > [class*="container_"] > div[class*="base_"])';
 const REGIONS = [
     `${BASE} > div[class*="bar_"]`,
     'nav[class*="guilds_"]',
@@ -19,6 +19,8 @@ const REGIONS = [
 ].join(",");
 
 const MUSIC = "vc-spotify-shown";
+const PANELS_STYLE = "vc-panels-height";
+const RAIL = 'main[class*="chatContent"] + div[class*="container"]';
 const DROP_HAS = /:has\([^()]*(?:data-app-right-panel|\.gameOption_)[^()]*\)/g;
 const AFTER_ANY = / \* \+ (?:\*|(?=::?(?:before|after)))/g;
 
@@ -26,6 +28,7 @@ let ring: HTMLDivElement | undefined;
 let panels: Element | null = null;
 let findPanels: ReturnType<typeof setInterval> | undefined;
 const music = new MutationObserver(syncMusic);
+const sizes = new ResizeObserver(publishPanels);
 let swapped: { rule: CSSStyleRule; original: string; }[] = [];
 const links = new MutationObserver(records => {
     for (const { addedNodes } of records)
@@ -63,11 +66,28 @@ function syncMusic() {
     document.documentElement.classList.toggle(MUSIC, document.getElementById("vc-spotify-player") !== null);
 }
 
+function publishPanels() {
+    const height = panels instanceof HTMLElement ? panels.offsetHeight : 0;
+    let el = document.getElementById(PANELS_STYLE);
+    if (!el) {
+        el = document.createElement("style");
+        el.id = PANELS_STYLE;
+        document.head.appendChild(el);
+    }
+    const text = height ? `${RAIL}{--vc-panels-h:${height}px}` : "";
+    if (el.textContent !== text) el.textContent = text;
+}
+
 function watchPanels() {
     if (panels?.isConnected) return;
     panels = document.querySelector('section[class*="panels_"]');
     music.disconnect();
-    if (panels) music.observe(panels, { childList: true });
+    sizes.disconnect();
+    if (panels) {
+        music.observe(panels, { childList: true });
+        sizes.observe(panels);
+    }
+    publishPanels();
     syncMusic();
 }
 
@@ -87,7 +107,7 @@ function onOut(e: PointerEvent) {
 
 export default definePlugin({
     name: "NoFullRestyle",
-    description: "Stops three things that make Discord re-style the whole app: the screen reader announcer being moved to the start of the page when a modal opens, the focus class flipping on the page root when the window gains or loses focus, and the mouse/keyboard class flipping when you switch between typing and clicking. Loading spinners keep spinning while Discord is in the background, and keyboard focus outlines no longer show. Also marks the app while you hover the server list, channel list or chat, so a theme can light it up without a :has() rule. The class goes on an empty .vc-region-ring overlay inside it. Puts .vc-spotify-shown on the page root while the MusicControls Spotify player is showing, for the same reason. Also rewrites Discord's `> * + *` rules as `> :not(:first-child)` and drops the :has() from its side-panel and game search rules, because they re-styled a whole list or the whole app when a modal or panel opened.",
+    description: "Stops three things that make Discord re-style the whole app: the screen reader announcer being moved to the start of the page when a modal opens, the focus class flipping on the page root when the window gains or loses focus, and the mouse/keyboard class flipping when you switch between typing and clicking. Loading spinners keep spinning while Discord is in the background, and keyboard focus outlines no longer show. Also marks the app while you hover the server list, channel list or chat, so a theme can light it up without a :has() rule. The class goes on an empty .vc-region-ring overlay inside it. Puts .vc-spotify-shown on the page root while the MusicControls Spotify player is showing, for the same reason. Publishes the panel stack's live height as --vc-panels-h on the member list, so a theme can keep the list above the quest pop-up, call panel and Spotify player. Also rewrites Discord's `> * + *` rules as `> :not(:first-child)` and drops the :has() from its side-panel and game search rules, because they re-styled a whole list or the whole app when a modal or panel opened.",
     authors: [{ name: "heart_menace", id: 281162701303185408n }],
     startAt: StartAt.DOMContentLoaded,
 
@@ -112,6 +132,8 @@ export default definePlugin({
         ring = undefined;
         clearInterval(findPanels);
         music.disconnect();
+        sizes.disconnect();
+        document.getElementById(PANELS_STYLE)?.remove();
         panels = null;
         document.documentElement.classList.remove(MUSIC);
         links.disconnect();
